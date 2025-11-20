@@ -23,8 +23,6 @@ contract SwapRegistry is Ownable {
     event NativeVaultCreated(address indexed vaultAddress, address indexed creator);
     event WhitelistedToken(address indexed tokenAddress);
 
-    string public constant NAME = "SwapRegistry";
-    string public constant VERSION = "1.0.0";
     address public immutable i_tokenVaultImplementation;
     mapping(address => bool) public s_whitelistedTokens;
     mapping(bytes32 => bool) public s_usedCommitmentHashes;

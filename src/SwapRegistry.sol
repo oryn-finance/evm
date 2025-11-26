@@ -17,15 +17,16 @@ contract SwapRegistry is Ownable {
     error SwapRegistry__InvalidAddress();
     error SwapRegistry__InsufficientFundsDeposited();
     error SwapRegistry__TokenNotAccepted();
-    error SwapRegistry__CommitmentHashAlreadyUsed();
+    error SwapRegistry__VaultAlreadyDeployed();
 
     event TokenVaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
     event NativeVaultCreated(address indexed vaultAddress, address indexed creator);
     event WhitelistedToken(address indexed tokenAddress);
 
+    address public constant NATIVE_TOKEN = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     address public immutable i_tokenVaultImplementation;
     mapping(address => bool) public s_whitelistedTokens;
-    mapping(bytes32 => bool) public s_usedCommitmentHashes;
+    mapping(address => bool) public s_deployedVaults;
 
     constructor() Ownable(msg.sender) {
         i_tokenVaultImplementation = address(new TokenDepositVault());
@@ -54,33 +55,33 @@ contract SwapRegistry is Ownable {
         address recipient,
         uint256 expiryBlocks,
         bytes32 commitmentHash,
-        uint256 srcChainId,
         uint256 amount
     ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
-        require(!s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
-        require(!s_usedCommitmentHashes[commitmentHash], SwapRegistry__CommitmentHashAlreadyUsed());
+        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
-        bytes memory encodedArgs = _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash, srcChainId);
+        bytes memory encodedArgs = _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash);
 
-        bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash, srcChainId);
+        bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash);
 
         address _tokenVaultImpl = i_tokenVaultImplementation;
 
         // getting the TokenSwapVault address
         address addr = _tokenVaultImpl.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
-        if (token == address(0)) {
+        require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
+
+        // Check if predicted address has been funded by user
+        if (token == NATIVE_TOKEN) {
             require(address(addr).balance >= amount, SwapRegistry__InsufficientFundsDeposited());
         } else {
             require(IERC20(token).balanceOf(addr) >= amount, SwapRegistry__InsufficientFundsDeposited());
         }
 
-        if (addr.code.length == 0) {
-            address vault = _tokenVaultImpl.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
-            emit TokenVaultCreated(address(vault), address(creator), token);
-            vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
-        }
-        s_usedCommitmentHashes[commitmentHash] = true;
+        address vault = _tokenVaultImpl.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
+        emit TokenVaultCreated(address(vault), address(creator), token);
+        vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
+
+        s_deployedVaults[addr] = true;
 
         return addr;
     }
@@ -91,16 +92,18 @@ contract SwapRegistry is Ownable {
         address recipient,
         uint256 expiryBlocks,
         bytes32 commitmentHash,
-        uint256 srcChainId,
         uint256 amount
     ) external view safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
-        require(!s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
-        require(!s_usedCommitmentHashes[commitmentHash], SwapRegistry__CommitmentHashAlreadyUsed());
+        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
-        return i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(
-            _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash, srcChainId),
-            _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash, srcChainId)
+        address predictedAddr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(
+            _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash),
+            _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash)
         );
+
+        require(!s_deployedVaults[predictedAddr], SwapRegistry__VaultAlreadyDeployed());
+
+        return predictedAddr;
     }
 
     function _getAbiEncodedTokenVaultArgs(
@@ -108,10 +111,9 @@ contract SwapRegistry is Ownable {
         address creator,
         address recipient,
         uint256 expiryBlocks,
-        bytes32 commitmentHash,
-        uint256 srcChainId
+        bytes32 commitmentHash
     ) internal pure returns (bytes memory) {
-        return abi.encode(token, creator, recipient, expiryBlocks, commitmentHash, srcChainId);
+        return abi.encode(token, creator, recipient, expiryBlocks, commitmentHash);
     }
 
     function _getSaltForTokenVault(
@@ -119,48 +121,8 @@ contract SwapRegistry is Ownable {
         address creator,
         address recipient,
         uint256 expiryBlocks,
-        bytes32 commitmentHash,
-        uint256 srcChainId
+        bytes32 commitmentHash
     ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(token, creator, recipient, expiryBlocks, commitmentHash, srcChainId));
+        return keccak256(abi.encode(token, creator, recipient, expiryBlocks, commitmentHash));
     }
-
-    // function createNativeSwapVault(
-    //     address creator,
-    //     address recipient,
-    //     uint256 expiryBlocks,
-    //     uint256 amount,
-    //     bytes32 commitmentHash
-    // ) external returns (address) {
-    //     require(nativeEscrowContract != address(0), SwapRegistry__NoNativeEscrowFound());
-    //     bytes memory encodedArgs =
-    //         abi.encode(nativeEscrowContract, creator, recipient, expiryBlocks, commitmentHash, amount);
-    //     bytes32 salt = keccak256(abi.encodePacked(creator, recipient, expiryBlocks, commitmentHash, amount));
-    //     address _nativeVaultImpl = nativeVaultImplementation;
-
-    //     // getting Native swap vault address
-    //     address addr = _nativeVaultImpl.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
-    //     require(address(addr).balance >= amount, SwapRegistry__InsufficientFundsDeposited());
-
-    //     if (addr.code.length == 0) {
-    //         address nativeVault = _nativeVaultImpl.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
-    //         emit NativeVaultCreated(address(nativeVault), address(creator));
-    //         nativeVault.functionCall(abi.encodeCall(NativeDepositVault.initialize, ()));
-    //     }
-    //     return addr;
-    // }
-
-    // function getNativeVaultAddress(
-    //     address creator,
-    //     address recipient,
-    //     uint256 expiryBlocks,
-    //     uint256 amount,
-    //     bytes32 commitmentHash
-    // ) external view safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
-    //     require(nativeEscrowContract != address(0), SwapRegistry__NoNativeEscrowFound());
-    //     return nativeVaultImplementation.predictDeterministicAddressWithImmutableArgs(
-    //         abi.encode(nativeEscrowContract, creator, recipient, expiryBlocks, commitmentHash, amount),
-    //         keccak256(abi.encodePacked(creator, recipient, expiryBlocks, commitmentHash, amount))
-    //     );
-    // }
 }

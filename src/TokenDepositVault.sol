@@ -24,17 +24,16 @@ contract TokenDepositVault is Initializable {
     }
 
     function initialize() public initializer {
-        (,,, uint256 expiryBlocks,,) = getSwapParameters();
-        s_depositedAt = block.number + expiryBlocks;
+        s_depositedAt = block.number;
     }
 
     function withdraw(bytes calldata _commitment) external {
-        (address token,, address recipient,, bytes32 commitmentHash,) = getSwapParameters();
+        (address token,, address recipient,, bytes32 commitmentHash) = getSwapParameters();
 
         require(sha256(_commitment) == commitmentHash, TokenDepositVault__InvalidCommitment());
 
-        if (token == address(0)) {
-            (bool success,) = recipient.call{value: address(this).balance, gas: 2500}("");
+        if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
+            (bool success,) = recipient.call{value: address(this).balance, gas: 5000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {
             IERC20(token).safeTransfer(recipient, IERC20(token).balanceOf(address(this)));
@@ -44,12 +43,12 @@ contract TokenDepositVault is Initializable {
     }
 
     function cancelSwap() external {
-        (address token, address creator,,, bytes32 commitmentHash,) = getSwapParameters();
+        (address token, address creator,, uint256 expiryblocks, bytes32 commitmentHash) = getSwapParameters();
 
-        require(block.number >= s_depositedAt, TokenDepositVault__SwapNotExpired());
+        require(block.number > s_depositedAt + expiryblocks, TokenDepositVault__SwapNotExpired());
 
-        if (token == address(0)) {
-            (bool success,) = creator.call{value: address(this).balance, gas: 2500}("");
+        if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
+            (bool success,) = creator.call{value: address(this).balance, gas: 5000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {
             IERC20(token).safeTransfer(creator, IERC20(token).balanceOf(address(this)));
@@ -58,47 +57,8 @@ contract TokenDepositVault is Initializable {
         emit Cancel(creator, commitmentHash);
     }
 
-    function getSwapParameters() internal view returns (address, address, address, uint256, bytes32, uint256) {
+    function getSwapParameters() internal view returns (address, address, address, uint256, bytes32) {
         bytes memory args = address(this).fetchCloneArgs();
-        return abi.decode(args, (address, address, address, uint256, bytes32, uint256));
+        return abi.decode(args, (address, address, address, uint256, bytes32));
     }
 }
-
-// contract NativeDepositVault is Initializable {
-//     using Clones for address;
-//     using SafeERC20 for IERC20;
-
-//     uint256 public depositedAt;
-
-//     constructor() {
-//         _disableInitializers();
-//     }
-
-//     function initialize() public initializer {
-//         // (
-//         //     address nativeEscrowContract,
-//         //     address creator,
-//         //     address recipient,
-//         //     uint256 expiryBlocks,
-//         //     bytes32 commitmentHash,
-//         //     uint256 amount
-//         // ) = getSwapParameters();
-//         // NativeTokenEscrow(nativeEscrowContract).createSwapFor{value: amount}(
-//         //     payable(creator),
-//         //     payable(recipient),
-//         //     expiryBlocks,
-//         //     amount,
-//         //     commitmentHash
-//         // );
-//     }
-
-//     function getSwapParameters() internal view returns (address, address, address, uint256, bytes32, uint256) {
-//         bytes memory args = address(this).fetchCloneArgs();
-//         return abi.decode(args, (address, address, address, uint256, bytes32, uint256));
-//     }
-
-//     function withdraw() external {}
-
-//     function cancelSwap() external {}
-
-// }

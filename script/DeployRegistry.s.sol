@@ -7,6 +7,9 @@ import {SwapRegistry} from "../src/SwapRegistry.sol";
 contract DeploySwapRegistry is Script {
     function run() external {
         vm.startBroadcast();
+
+        // bytes32 salt = keccak256(abi.encode("orynfi_registry"));
+        // SwapRegistry registry = new SwapRegistry{salt: salt}();
         SwapRegistry registry = new SwapRegistry();
 
         console.log("SwapRegistry deployed at:", address(registry));
@@ -14,3 +17,5 @@ contract DeploySwapRegistry is Script {
         vm.stopBroadcast();
     }
 }
+
+// https://api.routescan.io/v2/network/testnet/evm/43113/etherscan

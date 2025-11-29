@@ -44,8 +44,8 @@ contract SwapRegistry is Ownable {
 
     /// @notice Whitelists an ERC20 token to allow usage in swaps
     /// @param _tokenAddress The ERC20 token contract address to whitelist
-    function whitelistToken(address _tokenAddress) external onlyOwner {
-        s_whitelistedTokens[_tokenAddress] = true;
+    function whitelistToken(address _tokenAddress, bool _status) external onlyOwner {
+        s_whitelistedTokens[_tokenAddress] = _status;
         emit WhitelistedToken(_tokenAddress);
     }
 

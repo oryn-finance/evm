@@ -197,6 +197,6 @@ contract SwapRegistry is Ownable {
         uint256 expiryBlocks,
         bytes32 commitmentHash
     ) internal view returns (bytes32) {
-        return keccak256(abi.encode(block.chainid,token, creator, recipient, expiryBlocks, commitmentHash));
+        return keccak256(abi.encode(block.chainid, token, creator, recipient, expiryBlocks, commitmentHash));
     }
 }

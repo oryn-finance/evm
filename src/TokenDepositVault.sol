@@ -48,30 +48,15 @@ contract TokenDepositVault is Initializable {
     /// @dev Supports both ERC20 tokens and native ETH withdrawal
     /// @dev Reverts if commitment does not match or is invalid
     function withdraw(bytes calldata _commitment) external {
-        (
-            address token,
-            ,
-            address recipient,
-            ,
-            bytes32 commitmentHash
-        ) = getSwapParameters();
+        (address token,, address recipient,, bytes32 commitmentHash) = getSwapParameters();
 
-        require(
-            sha256(_commitment) == commitmentHash,
-            TokenDepositVault__InvalidCommitment()
-        );
+        require(sha256(_commitment) == commitmentHash, TokenDepositVault__InvalidCommitment());
 
         if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
-            (bool success, ) = recipient.call{
-                value: address(this).balance,
-                gas: 5000
-            }("");
+            (bool success,) = recipient.call{value: address(this).balance, gas: 5000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {
-            IERC20(token).safeTransfer(
-                recipient,
-                IERC20(token).balanceOf(address(this))
-            );
+            IERC20(token).safeTransfer(recipient, IERC20(token).balanceOf(address(this)));
         }
 
         emit Withdraw(recipient, _commitment);
@@ -81,30 +66,15 @@ contract TokenDepositVault is Initializable {
     /// @dev Only callable after expiryBlocks have passed since initialization
     /// @dev Supports both ERC20 tokens and native ETH withdrawal
     function cancelSwap() external {
-        (
-            address token,
-            address creator,
-            ,
-            uint256 expiryblocks,
-            bytes32 commitmentHash
-        ) = getSwapParameters();
+        (address token, address creator,, uint256 expiryblocks, bytes32 commitmentHash) = getSwapParameters();
 
-        require(
-            block.number > s_depositedAt + expiryblocks,
-            TokenDepositVault__SwapNotExpired()
-        );
+        require(block.number > s_depositedAt + expiryblocks, TokenDepositVault__SwapNotExpired());
 
         if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
-            (bool success, ) = creator.call{
-                value: address(this).balance,
-                gas: 5000
-            }("");
+            (bool success,) = creator.call{value: address(this).balance, gas: 5000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {
-            IERC20(token).safeTransfer(
-                creator,
-                IERC20(token).balanceOf(address(this))
-            );
+            IERC20(token).safeTransfer(creator, IERC20(token).balanceOf(address(this)));
         }
 
         emit Cancel(creator, commitmentHash);
@@ -117,11 +87,7 @@ contract TokenDepositVault is Initializable {
     /// @return expiryBlocks Number of blocks until the swap expires
     /// @return commitmentHash Hash (SHA256) that must be revealed to withdraw
     /// @dev Internal helper that decodes clone immutable arguments
-    function getSwapParameters()
-        internal
-        view
-        returns (address, address, address, uint256, bytes32)
-    {
+    function getSwapParameters() internal view returns (address, address, address, uint256, bytes32) {
         bytes memory args = address(this).fetchCloneArgs();
         return abi.decode(args, (address, address, address, uint256, bytes32));
     }

@@ -5,17 +5,13 @@ import {Script, console} from "../lib/forge-std/src/Script.sol";
 import {SwapRegistry} from "../src/SwapRegistry.sol";
 
 contract DeploySwapRegistry is Script {
-    function run() external {
+    function run(address _owner) external {
         vm.startBroadcast();
 
-        // bytes32 salt = keccak256(abi.encode("orynfi_registry"));
-        // SwapRegistry registry = new SwapRegistry{salt: salt}();
-        SwapRegistry registry = new SwapRegistry();
+        SwapRegistry registry = new SwapRegistry(_owner);
 
         console.log("SwapRegistry deployed at:", address(registry));
 
         vm.stopBroadcast();
     }
 }
-
-// https://api.routescan.io/v2/network/testnet/evm/43113/etherscan

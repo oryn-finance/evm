@@ -27,7 +27,7 @@ contract RegistryAndVaultTest is Test {
         token1 = new ERC20Impl("TestCoin1", "TC1", bob);
         token2 = new ERC20Impl("TestCoin2", "TC2", bob);
 
-        registry = new SwapRegistry();
+        registry = new SwapRegistry(bob);
 
         registry.whitelistToken(address(token1), true);
         registry.whitelistToken(address(token2), true);
@@ -82,7 +82,9 @@ contract RegistryAndVaultTest is Test {
             assert(bytes32(e) == SwapRegistry.SwapRegistry__ZeroAmount.selector);
         }
 
-        try registry.createTokenSwapVault(address(registry.NATIVE_TOKEN()), bob, alice, 100, sha256(abi.encode(0x1232)), 1000) {
+        try registry.createTokenSwapVault(
+            address(registry.NATIVE_TOKEN()), bob, alice, 100, sha256(abi.encode(0x1232)), 1000
+        ) {
             assert(false);
         } catch (bytes memory e) {
             assert(bytes32(e) == SwapRegistry.SwapRegistry__TokenNotAccepted.selector);
@@ -266,15 +268,13 @@ contract RegistryAndVaultTest is Test {
         assert(predictedAddr.balance == 1000);
         registry.createTokenSwapVault(registry.NATIVE_TOKEN(), alice, bob, 100, commitmenthash, 1000);
 
-        try 
-        registry.createTokenSwapVault(registry.NATIVE_TOKEN(), alice, bob, 100, commitmenthash, 1000) {
+        try registry.createTokenSwapVault(registry.NATIVE_TOKEN(), alice, bob, 100, commitmenthash, 1000) {
             assert(false);
         } catch (bytes memory e) {
             assert(bytes32(e) == SwapRegistry.SwapRegistry__VaultAlreadyDeployed.selector);
         }
 
-        try 
-        registry.getTokenVaultAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmenthash, 1000) {
+        try registry.getTokenVaultAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmenthash, 1000) {
             assert(false);
         } catch (bytes memory e) {
             assert(bytes32(e) == SwapRegistry.SwapRegistry__VaultAlreadyDeployed.selector);
@@ -289,19 +289,20 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmenthash = sha256(abi.encodePacked(commitment));
 
-        address predictedAddr =
-            registry.getTokenVaultAddress(registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmenthash, 1000);
+        address predictedAddr = registry.getTokenVaultAddress(
+            registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmenthash, 1000
+        );
 
         hoax(alice, 1000);
         payable(predictedAddr).call{value: 1000}("");
 
         assert(predictedAddr.balance == 1000);
 
-        registry.createTokenSwapVault(registry.NATIVE_TOKEN(),address(token1), address(token2), 100, commitmenthash, 1000);
+        registry.createTokenSwapVault(
+            registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmenthash, 1000
+        );
 
-        try 
-        TokenDepositVault(predictedAddr).withdraw(abi.encode(commitment))
-         {
+        try TokenDepositVault(predictedAddr).withdraw(abi.encode(commitment)) {
             assert(false);
         } catch (bytes memory e) {
             assert(bytes32(e) == TokenDepositVault.TokenDepositVault__NativeWithdrawFailed.selector);
@@ -310,9 +311,7 @@ contract RegistryAndVaultTest is Test {
         assert(predictedAddr.balance == 1000);
 
         vm.roll(103);
-        try 
-        TokenDepositVault(predictedAddr).cancelSwap()
-         {
+        try TokenDepositVault(predictedAddr).cancelSwap() {
             assert(false);
         } catch (bytes memory e) {
             assert(bytes32(e) == TokenDepositVault.TokenDepositVault__NativeWithdrawFailed.selector);
@@ -327,17 +326,18 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmenthash = sha256(abi.encodePacked(commitment));
 
-        address predictedAddr =
-            registry.getTokenVaultAddress(registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmenthash, 1000);
+        address predictedAddr = registry.getTokenVaultAddress(
+            registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmenthash, 1000
+        );
 
         assert(predictedAddr.balance == 0);
 
-        try registry.createTokenSwapVault(registry.NATIVE_TOKEN(),address(token1), address(token2), 100, commitmenthash, 1000) {
+        try registry.createTokenSwapVault(
+            registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmenthash, 1000
+        ) {
             assert(false);
-        }
-        catch (bytes memory e) {
+        } catch (bytes memory e) {
             assert(bytes32(e) == SwapRegistry.SwapRegistry__InsufficientFundsDeposited.selector);
         }
     }
-    
 }

@@ -28,6 +28,12 @@ contract SwapRegistry is Ownable {
     error SwapRegistry__TokenNotAccepted();
     // 0x769f851d
     error SwapRegistry__VaultAlreadyDeployed();
+    // 0x784f0cfd
+    error SwapRegistry__MsgValueAmountMismatch();
+    // 0xc7104a3a
+    error SwapRegistry__NativeDepositFailed();
+    // 0xd1494aa7
+    error SwapRegistry__OnlyNativeTokenAllowed();
 
     /// @notice Emitted when a new token vault is created
     /// @param vaultAddress Address of the newly created vault
@@ -127,6 +133,59 @@ contract SwapRegistry is Ownable {
         emit TokenVaultCreated(address(vault), address(creator), token);
 
         vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
+
+        // Mark vault as deployed to prevent re-creation
+        s_deployedVaults[addr] = true;
+
+        return addr;
+    }
+
+    /// @notice Creates a new deterministic token deposit vault
+    /// @param token Address of the ERC20 token to deposit (must be whitelisted)
+    /// @param creator Address of the vault creator/initiator
+    /// @param recipient Address that will receive the swap
+    /// @param expiryBlocks Number of blocks until the vault expires
+    /// @param commitmentHash Hash of the swap commitment/terms
+    /// @param amount Minimum token amount required in the vault
+    /// @return Address of the newly created vault
+    /// @dev The vault address is deterministic and based on all parameters
+    /// @dev Creator must pre-fund the predicted vault address with tokens before calling
+    function createTokenSwapVaultNativeCall(
+        address token,
+        address creator,
+        address recipient,
+        uint256 expiryBlocks,
+        bytes32 commitmentHash,
+        uint256 amount
+    ) external payable safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+        require(token == NATIVE_TOKEN, SwapRegistry__OnlyNativeTokenAllowed());
+        require(msg.value == amount, SwapRegistry__MsgValueAmountMismatch());
+        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
+
+        bytes memory encodedArgs = _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash);
+
+        bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash);
+
+        address _tokenVaultImpl = i_tokenVaultImplementation;
+
+        address addr = _tokenVaultImpl.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+
+        require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
+
+        {
+            (bool success,) = addr.call{value: amount, gas: 10000}("");
+            require(success, SwapRegistry__NativeDepositFailed());
+        }
+
+        // Verify the predicted address has been funded with the required tokens by the creator
+        require(address(addr).balance >= amount, SwapRegistry__InsufficientFundsDeposited());
+
+        {
+            address vault = _tokenVaultImpl.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
+            emit TokenVaultCreated(address(vault), address(creator), token);
+
+            vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
+        }
 
         // Mark vault as deployed to prevent re-creation
         s_deployedVaults[addr] = true;

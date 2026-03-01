@@ -13,6 +13,8 @@ contract ERC20Impl is ERC20 {
 }
 
 contract RegistryAndVaultTest is Test {
+    event TokenVaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
+
     SwapRegistry registry;
     ERC20Impl token1;
     ERC20Impl token2;
@@ -339,5 +341,240 @@ contract RegistryAndVaultTest is Test {
         } catch (bytes memory e) {
             assert(bytes32(e) == SwapRegistry.SwapRegistry__InsufficientFundsDeposited.selector);
         }
+    }
+
+    // ========== createTokenSwapVaultNativeCall tests ==========
+
+    function test_createTokenSwapVaultNativeCall_Success() public {
+        vm.startPrank(bob);
+        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        vm.stopPrank();
+
+        bytes32 commitment = sha256("hello");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+        uint256 amount = 1 ether;
+
+        address predictedAddr =
+            registry.getTokenVaultAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount);
+
+        vm.deal(alice, amount);
+        vm.prank(alice);
+        address vault = registry.createTokenSwapVaultNativeCall{value: amount}(
+            registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount
+        );
+
+        assertEq(vault, predictedAddr, "returned address should match predicted");
+        assertTrue(registry.s_deployedVaults(vault), "vault should be marked deployed");
+        assertEq(vault.balance, amount, "vault should hold the sent ETH");
+        assertEq(TokenDepositVault(vault).s_depositedAt(), block.number, "depositedAt should be set");
+    }
+
+    function test_createTokenSwapVaultNativeCall_WithdrawWorks() public {
+        vm.startPrank(bob);
+        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        vm.stopPrank();
+
+        bytes32 commitment = sha256("secret");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+        uint256 amount = 2 ether;
+
+        vm.deal(alice, amount);
+        vm.prank(alice);
+        address vault = registry.createTokenSwapVaultNativeCall{value: amount}(
+            registry.NATIVE_TOKEN(), alice, bob, 50, commitmentHash, amount
+        );
+
+        uint256 bobBefore = bob.balance;
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+        assertEq(bob.balance, bobBefore + amount, "recipient should receive ETH");
+        assertEq(vault.balance, 0, "vault should be empty after withdraw");
+    }
+
+    function test_createTokenSwapVaultNativeCall_CancelAfterExpiryWorks() public {
+        vm.startPrank(bob);
+        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        vm.stopPrank();
+
+        bytes32 commitmentHash = sha256(abi.encodePacked("any"));
+        uint256 amount = 1 ether;
+        uint256 expiryBlocks = 10;
+
+        vm.deal(alice, amount);
+        vm.prank(alice);
+        address vault = registry.createTokenSwapVaultNativeCall{value: amount}(
+            registry.NATIVE_TOKEN(), alice, charlie, expiryBlocks, commitmentHash, amount
+        );
+
+        vm.roll(block.number + expiryBlocks + 1);
+        uint256 aliceBefore = alice.balance;
+        TokenDepositVault(vault).cancelSwap();
+        assertEq(alice.balance, aliceBefore + amount, "creator should get refund");
+        assertEq(vault.balance, 0, "vault should be empty after cancel");
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenTokenNotNative() public {
+        vm.startPrank(bob);
+        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        vm.stopPrank();
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 1 ether}(
+            address(token1), alice, bob, 100, sha256("x"), 1 ether
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__OnlyNativeTokenAllowed.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenMsgValueMismatch() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        vm.deal(alice, 2 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 500}(nativeToken, alice, bob, 100, sha256("x"), 1 ether) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__MsgValueAmountMismatch.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenNativeNotWhitelisted() public {
+        address nativeToken = registry.NATIVE_TOKEN();
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 1 ether}(
+            nativeToken, alice, bob, 100, sha256("x"), 1 ether
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__TokenNotAccepted.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenVaultAlreadyDeployed() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 1 ether;
+        vm.deal(alice, amount * 2);
+
+        vm.prank(alice);
+        registry.createTokenSwapVaultNativeCall{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
+
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: amount}(
+            nativeToken, alice, bob, 100, commitmentHash, amount
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__VaultAlreadyDeployed.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenCreatorZero() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 1 ether}(
+            nativeToken, address(0), bob, 100, sha256("x"), 1 ether
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__InvalidAddressParameters.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenRecipientZero() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 1 ether}(
+            nativeToken, alice, address(0), 100, sha256("x"), 1 ether
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__InvalidAddressParameters.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenCreatorEqualsRecipient() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 1 ether}(
+            nativeToken, alice, alice, 100, sha256("x"), 1 ether
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__InvalidAddressParameters.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenZeroExpiryBlocks() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 1 ether}(nativeToken, alice, bob, 0, sha256("x"), 1 ether) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__ZeroExpiryBlocks.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertWhenZeroAmount() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: 0}(nativeToken, alice, bob, 100, sha256("x"), 0) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__ZeroAmount.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultNativeCall_EmitsTokenVaultCreated() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 1 ether;
+        vm.deal(alice, amount);
+
+        address predicted = registry.getTokenVaultAddress(nativeToken, alice, bob, 100, commitmentHash, amount);
+
+        vm.prank(alice);
+        vm.expectEmit(true, true, true, true);
+        emit TokenVaultCreated(predicted, alice, nativeToken);
+        registry.createTokenSwapVaultNativeCall{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
     }
 }

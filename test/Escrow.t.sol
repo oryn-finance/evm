@@ -656,7 +656,8 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultSigned_Success() public {
         bytes32 commitmentHash = sha256(abi.encodePacked("signed-secret"));
         uint256 amount = 300;
-        uint256 nonce = registry.nonces(alice);
+        // uint256 nonce = registry.nonces(alice);
+        uint256 nonce = 1;
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -691,7 +692,7 @@ contract RegistryAndVaultTest is Test {
         );
 
         address vault = registry.createTokenSwapVaultSigned(
-            address(permitToken), alice, bob, 100, commitmentHash, amount, nonce, signature
+            address(permitToken), alice, bob, 100, commitmentHash, amount, signature
         );
 
         assertEq(vault, predicted);
@@ -702,7 +703,6 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultSigned_RevertWhenInvalidSignature() public {
         bytes32 commitmentHash = sha256("x");
         uint256 amount = 100;
-        uint256 nonce = registry.nonces(alice);
 
         // Sign with wrong creator (bob instead of alice) - signature won't match
         bytes32 structHash = keccak256(
@@ -713,8 +713,7 @@ contract RegistryAndVaultTest is Test {
                 bob,
                 100,
                 commitmentHash,
-                amount,
-                nonce
+                amount
             )
         );
         (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
@@ -735,7 +734,7 @@ contract RegistryAndVaultTest is Test {
 
         vm.prank(bob);
         try registry.createTokenSwapVaultSigned(
-            address(permitToken), alice, bob, 100, commitmentHash, amount, nonce, signature
+            address(permitToken), alice, bob, 100, commitmentHash, amount, signature
         ) {
             assert(false);
         } catch (bytes memory e) {

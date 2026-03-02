@@ -1,3 +1,13 @@
+//
+//    ▄▄▄▄                                  ▄▄                  ▄▄                 
+//   ██▀▀██                                 ██                  ██                 
+//  ██    ██   ██▄████  ▀██  ███  ██▄████▄  ██         ▄█████▄  ██▄███▄   ▄▄█████▄ 
+//  ██    ██   ██▀       ██▄ ██   ██▀   ██  ██         ▀ ▄▄▄██  ██▀  ▀██  ██▄▄▄▄ ▀ 
+//  ██    ██   ██         ████▀   ██    ██  ██        ▄██▀▀▀██  ██    ██   ▀▀▀▀██▄ 
+//   ██▄▄██    ██          ███    ██    ██  ██▄▄▄▄▄▄  ██▄▄▄███  ███▄▄██▀  █▄▄▄▄▄██ 
+//    ▀▀▀▀     ▀▀          ██     ▀▀    ▀▀  ▀▀▀▀▀▀▀▀   ▀▀▀▀ ▀▀  ▀▀ ▀▀▀     ▀▀▀▀▀▀  
+//                       ███         
+//
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
@@ -10,9 +20,11 @@ contract TokenDepositVault is Initializable {
     using Clones for address;
     using SafeERC20 for IERC20;
 
-    /// @notice Block number when the vault was initialized and assets were deposited
-    /// @dev Used to enforce swap expiry deadlines
-    uint256 public s_depositedAt;
+    //////////////////////////////////
+    //////////////////////////////////
+    ////////// Errors ////////////////
+    //////////////////////////////////
+    //////////////////////////////////
 
     // 0x245729d0
     error TokenDepositVault__InvalidCommitment();
@@ -20,6 +32,12 @@ contract TokenDepositVault is Initializable {
     error TokenDepositVault__SwapNotExpired();
     // 0xe587eaf5
     error TokenDepositVault__NativeWithdrawFailed();
+
+    //////////////////////////////////
+    //////////////////////////////////
+    ////////// Events ////////////////
+    //////////////////////////////////
+    //////////////////////////////////
 
     /// @notice Emitted when assets are withdrawn by the recipient via valid commitment
     /// @param recipient Address that received the withdrawn assets
@@ -30,6 +48,23 @@ contract TokenDepositVault is Initializable {
     /// @param creator Address that receives the returned assets
     /// @param commitmentHash Hash of the original swap commitment
     event Cancel(address indexed creator, bytes32 commitmentHash);
+
+
+    //////////////////////////////////
+    //////////////////////////////////
+    ////// State Variables ///////////
+    //////////////////////////////////
+    //////////////////////////////////
+
+    /// @notice Block number when the vault was initialized and assets were deposited
+    /// @dev Used to enforce swap expiry deadlines
+    uint256 public s_depositedAt;
+
+    //////////////////////////////////
+    //////////////////////////////////
+    /////// Constructor //////////////
+    //////////////////////////////////
+    //////////////////////////////////
 
     constructor() {
         _disableInitializers();
@@ -42,6 +77,12 @@ contract TokenDepositVault is Initializable {
         // Record the block number when assets were deposited for expiry calculations
         s_depositedAt = block.number;
     }
+
+    //////////////////////////////////
+    //////////////////////////////////
+    ////////// Functions /////////////
+    //////////////////////////////////
+    //////////////////////////////////
 
     /// @notice Withdraws vault assets to the recipient if valid commitment is provided
     /// @param _commitment The preimage that hashes to the stored commitmentHash
@@ -79,6 +120,13 @@ contract TokenDepositVault is Initializable {
 
         emit Cancel(creator, commitmentHash);
     }
+
+
+    //////////////////////////////////
+    //////////////////////////////////
+    //////// Getter Functions ////////
+    //////////////////////////////////
+    //////////////////////////////////
 
     /// @notice Retrieves swap parameters stored as immutable arguments in the clone
     /// @return token Address of the ERC20 token or NATIVE_TOKEN sentinel for ETH

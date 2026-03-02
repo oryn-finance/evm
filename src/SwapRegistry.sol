@@ -6,13 +6,19 @@ import {Clones} from "../lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 import {Address} from "../lib/openzeppelin-contracts/contracts/utils/Address.sol";
 import {Ownable} from "../lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "../lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {SafeERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {EIP712} from "../lib/openzeppelin-contracts/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "../lib/openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
+import {Nonces} from "../lib/openzeppelin-contracts/contracts/utils/Nonces.sol";
 
 /// @author Oryn Finance
 /// @title SwapRegistry
 /// @notice Factory for creating deterministic token deposit vaults that allow seamless atomic swaps
-contract SwapRegistry is Ownable {
+contract SwapRegistry is Ownable, EIP712, Nonces {
     using Clones for address;
     using Address for address;
+    using SafeERC20 for IERC20;
 
     // 0xd6e2de8f
     error SwapRegistry__InvalidAddressParameters();
@@ -34,6 +40,17 @@ contract SwapRegistry is Ownable {
     error SwapRegistry__NativeDepositFailed();
     // 0xd1494aa7
     error SwapRegistry__OnlyNativeTokenAllowed();
+    // 0x...
+    error SwapRegistry__OnlyERC20Allowed();
+    // 0x...
+    error SwapRegistry__InvalidSignature();
+    // 0x...
+    error SwapRegistry__PermitFailed();
+
+    /// @notice EIP-712 typehash for CreateVaultParams (used in createTokenSwapVaultSigned)
+    bytes32 public constant CREATE_VAULT_TYPEHASH = keccak256(
+        "CreateVaultParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount,uint256 nonce)"
+    );
 
     /// @notice Emitted when a new token vault is created
     /// @param vaultAddress Address of the newly created vault
@@ -64,7 +81,7 @@ contract SwapRegistry is Ownable {
     /// @dev Ensures deterministic addresses are only used once
     mapping(address => bool) public s_deployedVaults;
 
-    constructor(address _owner) Ownable(_owner) {
+    constructor(address _owner) EIP712("SwapRegistry", "1") Ownable(_owner) {
         i_tokenVaultImplementation = address(new TokenDepositVault());
     }
 
@@ -129,18 +146,11 @@ contract SwapRegistry is Ownable {
             require(IERC20(token).balanceOf(addr) >= amount, SwapRegistry__InsufficientFundsDeposited());
         }
 
-        address vault = _tokenVaultImpl.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
-        emit TokenVaultCreated(address(vault), address(creator), token);
-
-        vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
-
-        // Mark vault as deployed to prevent re-creation
-        s_deployedVaults[addr] = true;
-
+        _deployVault(encodedArgs, salt, creator, token);
         return addr;
     }
 
-    /// @notice Creates a new deterministic token deposit vault
+    /// @notice Creates a new deterministic token deposit vault for native ETH in one tx
     /// @param token Address of the ERC20 token to deposit (must be whitelisted)
     /// @param creator Address of the vault creator/initiator
     /// @param recipient Address that will receive the swap
@@ -166,9 +176,7 @@ contract SwapRegistry is Ownable {
 
         bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash);
 
-        address _tokenVaultImpl = i_tokenVaultImplementation;
-
-        address addr = _tokenVaultImpl.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+        address addr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
 
@@ -180,16 +188,111 @@ contract SwapRegistry is Ownable {
         // Verify the predicted address has been funded with the required tokens by the creator
         require(address(addr).balance >= amount, SwapRegistry__InsufficientFundsDeposited());
 
-        {
-            address vault = _tokenVaultImpl.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
-            emit TokenVaultCreated(address(vault), address(creator), token);
+        _deployVault(encodedArgs, salt, creator, token);
+        return addr;
+    }
 
-            vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
+    /// @notice Creates a deterministic ERC20 vault in one tx using EIP-2612 permit (no prior approve needed)
+    /// @param token ERC20 token with permit support (must be whitelisted)
+    /// @param creator Vault creator who signs the permit
+    /// @param recipient Address that will receive the swap
+    /// @param expiryBlocks Number of blocks until the vault expires
+    /// @param commitmentHash Hash of the swap commitment/terms
+    /// @param amount Token amount to deposit
+    /// @param deadline Permit signature deadline (unix timestamp)
+    /// @param v Permit signature v
+    /// @param r Permit signature r
+    /// @param s Permit signature s
+    /// @return Address of the newly created vault
+    function createTokenSwapVaultPermit(
+        address token,
+        address creator,
+        address recipient,
+        uint256 expiryBlocks,
+        bytes32 commitmentHash,
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+        require(token != NATIVE_TOKEN, SwapRegistry__OnlyERC20Allowed());
+        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
+
+        try IERC20Permit(token).permit(creator, address(this), amount, deadline, v, r, s) {} catch {
+            revert SwapRegistry__PermitFailed();
         }
 
-        // Mark vault as deployed to prevent re-creation
-        s_deployedVaults[addr] = true;
+        return _createERC20VaultFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
+    }
 
+    /// @notice Creates a deterministic ERC20 vault using EIP-712 signed authorization (relayer can submit)
+    /// @dev Creator must have approved this registry to spend tokens before calling
+    /// @param token ERC20 token (must be whitelisted)
+    /// @param creator Vault creator who signed the params
+    /// @param recipient Address that will receive the swap
+    /// @param expiryBlocks Number of blocks until the vault expires
+    /// @param commitmentHash Hash of the swap commitment/terms
+    /// @param amount Token amount to deposit
+    /// @param nonce Creator's nonce for replay protection
+    /// @param signature EIP-712 signature over CreateVaultParams
+    /// @return Address of the newly created vault
+    function createTokenSwapVaultSigned(
+        address token,
+        address creator,
+        address recipient,
+        uint256 expiryBlocks,
+        bytes32 commitmentHash,
+        uint256 amount,
+        uint256 nonce,
+        bytes calldata signature
+    ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+        require(token != NATIVE_TOKEN, SwapRegistry__OnlyERC20Allowed());
+        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
+
+        _verifyCreateVaultSignature(token, creator, recipient, expiryBlocks, commitmentHash, amount, nonce, signature);
+        _useCheckedNonce(creator, nonce);
+
+        return _createERC20VaultFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
+    }
+
+    /// @notice Verifies EIP-712 signature for createTokenSwapVaultSigned
+    function _verifyCreateVaultSignature(
+        address token,
+        address creator,
+        address recipient,
+        uint256 expiryBlocks,
+        bytes32 commitmentHash,
+        uint256 amount,
+        uint256 nonce,
+        bytes calldata signature
+    ) internal view {
+        bytes32 structHash = keccak256(
+            abi.encode(CREATE_VAULT_TYPEHASH, token, creator, recipient, expiryBlocks, commitmentHash, amount, nonce)
+        );
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
+        require(signer == creator, SwapRegistry__InvalidSignature());
+    }
+
+    /// @notice Pulls ERC20 from creator to vault address and deploys vault
+    function _createERC20VaultFromCreator(
+        address token,
+        address creator,
+        address recipient,
+        uint256 expiryBlocks,
+        bytes32 commitmentHash,
+        uint256 amount
+    ) internal returns (address) {
+        bytes memory encodedArgs = _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash);
+        bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash);
+        address addr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+
+        require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
+
+        IERC20(token).safeTransferFrom(creator, addr, amount);
+        require(IERC20(token).balanceOf(addr) >= amount, SwapRegistry__InsufficientFundsDeposited());
+
+        _deployVault(encodedArgs, salt, creator, token);
         return addr;
     }
 
@@ -221,6 +324,24 @@ contract SwapRegistry is Ownable {
         require(!s_deployedVaults[predictedAddr], SwapRegistry__VaultAlreadyDeployed());
 
         return predictedAddr;
+    }
+
+    /// @notice Deploys vault clone, initializes it, and marks as deployed
+    /// @param encodedArgs ABI-encoded vault params (token, creator, recipient, expiryBlocks, commitmentHash)
+    /// @param salt Deterministic deployment salt
+    /// @param creator Vault creator (for event)
+    /// @param token Token address (for event)
+    function _deployVault(
+        bytes memory encodedArgs,
+        bytes32 salt,
+        address creator,
+        address token
+    ) internal {
+        address vault = i_tokenVaultImplementation.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
+        emit TokenVaultCreated(address(vault), address(creator), token);
+        vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
+        address addr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+        s_deployedVaults[addr] = true;
     }
 
     /// @notice Encodes vault initialization parameters for cloning

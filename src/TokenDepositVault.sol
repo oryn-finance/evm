@@ -32,6 +32,7 @@ contract TokenDepositVault is Initializable {
     error TokenDepositVault__SwapNotExpired();
     // 0xe587eaf5
     error TokenDepositVault__NativeWithdrawFailed();
+    error TokenDepositVault__VaultAlreadySettled();
 
     //////////////////////////////////
     //////////////////////////////////
@@ -42,6 +43,10 @@ contract TokenDepositVault is Initializable {
     /// @notice Block number when the vault was initialized and assets were deposited
     /// @dev Used to enforce swap expiry deadlines
     uint256 public s_depositedAt;
+
+    /// @notice Whether the vault has been settled (withdrawn or cancelled)
+    /// @dev Once true, no further withdraw or cancel operations are allowed
+    bool public s_settled;
 
     //////////////////////////////////
     //////////////////////////////////
@@ -88,12 +93,16 @@ contract TokenDepositVault is Initializable {
     /// @dev Supports both ERC20 tokens and native ETH withdrawal
     /// @dev Reverts if commitment does not match or is invalid
     function withdraw(bytes calldata _commitment) external {
+        require(!s_settled, TokenDepositVault__VaultAlreadySettled());
+
         (address token,, address recipient,, bytes32 commitmentHash) = getSwapParameters();
 
         require(sha256(_commitment) == commitmentHash, TokenDepositVault__InvalidCommitment());
 
+        s_settled = true;
+
         if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
-            (bool success,) = recipient.call{value: address(this).balance, gas: 5000}("");
+            (bool success,) = recipient.call{value: address(this).balance, gas: 30000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {
             IERC20(token).safeTransfer(recipient, IERC20(token).balanceOf(address(this)));
@@ -106,12 +115,16 @@ contract TokenDepositVault is Initializable {
     /// @dev Only callable after expiryBlocks have passed since initialization
     /// @dev Supports both ERC20 tokens and native ETH withdrawal
     function cancelSwap() external {
+        require(!s_settled, TokenDepositVault__VaultAlreadySettled());
+
         (address token, address creator,, uint256 expiryblocks, bytes32 commitmentHash) = getSwapParameters();
 
         require(block.number > s_depositedAt + expiryblocks, TokenDepositVault__SwapNotExpired());
 
+        s_settled = true;
+
         if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
-            (bool success,) = creator.call{value: address(this).balance, gas: 5000}("");
+            (bool success,) = creator.call{value: address(this).balance, gas: 30000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {
             IERC20(token).safeTransfer(creator, IERC20(token).balanceOf(address(this)));

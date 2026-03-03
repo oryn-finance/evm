@@ -58,6 +58,7 @@ contract SwapRegistry is Ownable, EIP712 {
     error SwapRegistry__InvalidSignature();
     // 0xed772378
     error SwapRegistry__PermitFailed();
+    error SwapRegistry__InvalidCommitmentHash();
 
     //////////////////////////////////
     //////////////////////////////////
@@ -392,6 +393,7 @@ contract SwapRegistry is Ownable, EIP712 {
         uint256 expiryBlocks,
         bytes32 commitmentHash
     ) internal view returns (bytes memory encodedArgs, bytes32 salt) {
+        require(commitmentHash != bytes32(0), SwapRegistry__InvalidCommitmentHash());
         encodedArgs = abi.encode(token, creator, recipient, expiryBlocks, commitmentHash);
         salt = keccak256(abi.encode(block.chainid, token, creator, recipient, expiryBlocks, commitmentHash));
     }

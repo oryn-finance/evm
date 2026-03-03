@@ -1085,4 +1085,144 @@ contract RegistryAndVaultTest is Test {
         );
         assertEq(registry.NATIVE_TOKEN(), 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
     }
+
+    // ========== P0: s_settled — double withdraw / cancel / cross-call tests ==========
+
+    function test_withdraw_RevertsOnDoubleWithdraw_ERC20() public {
+        bytes32 commitment = sha256("hello");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        vm.prank(bob);
+        token1.transfer(vault, 120);
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, commitmentHash, 120);
+
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+        assertEq(token1.balanceOf(alice), 120);
+        assertTrue(TokenDepositVault(vault).s_settled());
+
+        vm.expectRevert(TokenDepositVault.TokenDepositVault__VaultAlreadySettled.selector);
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+    }
+
+    function test_cancel_RevertsOnDoubleCancel_ERC20() public {
+        bytes32 commitment = sha256("hello");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        vm.prank(bob);
+        token1.transfer(vault, 120);
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, commitmentHash, 120);
+
+        vm.roll(12);
+        TokenDepositVault(vault).cancelSwap();
+        assertTrue(TokenDepositVault(vault).s_settled());
+
+        vm.expectRevert(TokenDepositVault.TokenDepositVault__VaultAlreadySettled.selector);
+        TokenDepositVault(vault).cancelSwap();
+    }
+
+    function test_cancel_RevertsAfterWithdraw() public {
+        bytes32 commitment = sha256("hello");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        vm.prank(bob);
+        token1.transfer(vault, 120);
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, commitmentHash, 120);
+
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+
+        vm.roll(12);
+        vm.expectRevert(TokenDepositVault.TokenDepositVault__VaultAlreadySettled.selector);
+        TokenDepositVault(vault).cancelSwap();
+    }
+
+    function test_withdraw_RevertsAfterCancel() public {
+        bytes32 commitment = sha256("hello");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        vm.prank(bob);
+        token1.transfer(vault, 120);
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, commitmentHash, 120);
+
+        vm.roll(12);
+        TokenDepositVault(vault).cancelSwap();
+
+        vm.expectRevert(TokenDepositVault.TokenDepositVault__VaultAlreadySettled.selector);
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+    }
+
+    function test_withdraw_RevertsOnDoubleWithdraw_NativeETH() public {
+        vm.startPrank(bob);
+        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        vm.stopPrank();
+
+        bytes32 commitment = sha256("hello");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+        uint256 amount = 1 ether;
+
+        vm.deal(alice, amount);
+        vm.prank(alice);
+        address vault = registry.createTokenSwapVaultNativeCall{value: amount}(
+            registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount
+        );
+
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+        assertTrue(TokenDepositVault(vault).s_settled());
+
+        vm.expectRevert(TokenDepositVault.TokenDepositVault__VaultAlreadySettled.selector);
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+    }
+
+    function test_cancel_RevertsOnDoubleCancel_NativeETH() public {
+        vm.startPrank(bob);
+        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        vm.stopPrank();
+
+        bytes32 commitmentHash = sha256(abi.encodePacked("any"));
+        uint256 amount = 1 ether;
+
+        vm.deal(alice, amount);
+        vm.prank(alice);
+        address vault = registry.createTokenSwapVaultNativeCall{value: amount}(
+            registry.NATIVE_TOKEN(), alice, charlie, 10, commitmentHash, amount
+        );
+
+        vm.roll(block.number + 11);
+        TokenDepositVault(vault).cancelSwap();
+        assertTrue(TokenDepositVault(vault).s_settled());
+
+        vm.expectRevert(TokenDepositVault.TokenDepositVault__VaultAlreadySettled.selector);
+        TokenDepositVault(vault).cancelSwap();
+    }
+
+    // ========== P0: commitmentHash == bytes32(0) ==========
+
+    function test_createTokenSwapVault_RevertsOnZeroCommitmentHash() public {
+        vm.prank(bob);
+        token1.transfer(alice, 120);
+
+        vm.expectRevert(SwapRegistry.SwapRegistry__InvalidCommitmentHash.selector);
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, bytes32(0), 120);
+    }
+
+    function test_getTokenVaultAddress_RevertsOnZeroCommitmentHash() public {
+        vm.expectRevert(SwapRegistry.SwapRegistry__InvalidCommitmentHash.selector);
+        registry.getTokenVaultAddress(address(token1), bob, alice, 10, bytes32(0), 120);
+    }
+
+    function test_createTokenSwapVaultNativeCall_RevertsOnZeroCommitmentHash() public {
+        address nativeToken = registry.NATIVE_TOKEN();
+        vm.startPrank(bob);
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        hoax(alice, 1 ether);
+        vm.expectRevert(SwapRegistry.SwapRegistry__InvalidCommitmentHash.selector);
+        registry.createTokenSwapVaultNativeCall{value: 1 ether}(
+            nativeToken, alice, bob, 100, bytes32(0), 1 ether
+        );
+    }
 }

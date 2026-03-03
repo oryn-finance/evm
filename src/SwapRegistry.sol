@@ -68,7 +68,7 @@ contract SwapRegistry is Ownable, EIP712 {
 
     /// @notice EIP-712 typehash for CreateVaultParams (used in createTokenSwapVaultSigned)
     bytes32 public constant CREATE_VAULT_TYPEHASH = keccak256(
-        "CreateVaultParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount)"
+        "CreateVaultParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount,uint256 nonce)"
     );
 
     /// @notice Sentinel address representing native ETH in swap operations
@@ -90,6 +90,10 @@ contract SwapRegistry is Ownable, EIP712 {
     /// @notice Mapping tracking all deployed vault addresses to prevent duplicates
     /// @dev Ensures deterministic addresses are only used once
     mapping(address => bool) public s_deployedVaults;
+
+    /// @notice Monotonically increasing nonce per creator for EIP-712 signed vault creation
+    /// @dev Prevents signature replay and allows creators to invalidate pending signatures
+    mapping(address => uint256) public s_nonces;
 
     //////////////////////////////////
     //////////////////////////////////
@@ -317,7 +321,7 @@ contract SwapRegistry is Ownable, EIP712 {
     //////////////////////////////////
     //////////////////////////////////
 
-    /// @notice Verifies EIP-712 signature for createTokenSwapVaultSigned
+    /// @notice Verifies EIP-712 signature for createTokenSwapVaultSigned and increments nonce
     function _verifyCreateVaultSignature(
         address token,
         address creator,
@@ -326,9 +330,10 @@ contract SwapRegistry is Ownable, EIP712 {
         bytes32 commitmentHash,
         uint256 amount,
         bytes calldata signature
-    ) internal view {
+    ) internal {
+        uint256 nonce = s_nonces[creator]++;
         bytes32 structHash = keccak256(
-            abi.encode(CREATE_VAULT_TYPEHASH, token, creator, recipient, expiryBlocks, commitmentHash, amount)
+            abi.encode(CREATE_VAULT_TYPEHASH, token, creator, recipient, expiryBlocks, commitmentHash, amount, nonce)
         );
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
         require(signer == creator, SwapRegistry__InvalidSignature());

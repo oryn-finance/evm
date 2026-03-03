@@ -715,7 +715,7 @@ contract RegistryAndVaultTest is Test {
         {
             bytes32 structHash = keccak256(
                 abi.encode(
-                    registry.CREATE_VAULT_TYPEHASH(), address(permitToken), alice, bob, 100, commitmentHash, amount
+                    registry.CREATE_VAULT_TYPEHASH(), address(permitToken), alice, bob, 100, commitmentHash, amount, registry.s_nonces(alice)
                 )
             );
             (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
@@ -746,6 +746,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(vault, predicted);
         assertTrue(registry.s_deployedVaults(vault));
         assertEq(permitToken.balanceOf(vault), amount);
+        assertEq(registry.s_nonces(alice), 1);
     }
 
     function test_createTokenSwapVaultSigned_RevertWhenInvalidSignature() public {
@@ -762,7 +763,8 @@ contract RegistryAndVaultTest is Test {
                     bob,
                     100,
                     commitmentHash,
-                    amount
+                    amount,
+                    registry.s_nonces(alice)
                 )
             );
             (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
@@ -817,22 +819,24 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked("signed-secret"));
         uint256 amount = 300;
 
+        (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+            registry.eip712Domain();
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name)),
+                keccak256(bytes(version)),
+                chainId,
+                verifyingContract
+            )
+        );
+
+        // Sign with nonce 0 for first vault creation
         bytes memory signature;
         {
             bytes32 structHash = keccak256(
                 abi.encode(
-                    registry.CREATE_VAULT_TYPEHASH(), address(permitToken), alice, bob, 100, commitmentHash, amount
-                )
-            );
-            (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
-                registry.eip712Domain();
-            bytes32 domainSeparator = keccak256(
-                abi.encode(
-                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                    keccak256(bytes(name)),
-                    keccak256(bytes(version)),
-                    chainId,
-                    verifyingContract
+                    registry.CREATE_VAULT_TYPEHASH(), address(permitToken), alice, bob, 100, commitmentHash, amount, 0
                 )
             );
             (uint8 v, bytes32 r, bytes32 s) =
@@ -843,15 +847,26 @@ contract RegistryAndVaultTest is Test {
         vm.prank(alice);
         permitToken.approve(address(registry), amount);
 
-        vm.prank(alice);
         registry.createTokenSwapVaultSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
+
+        // Sign with nonce 1 for second attempt (same params → VaultAlreadyDeployed)
+        bytes memory signature2;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    registry.CREATE_VAULT_TYPEHASH(), address(permitToken), alice, bob, 100, commitmentHash, amount, 1
+                )
+            );
+            (uint8 v, bytes32 r, bytes32 s) =
+                vm.sign(ALICE_PK, MessageHashUtils.toTypedDataHash(domainSeparator, structHash));
+            signature2 = abi.encodePacked(r, s, v);
+        }
 
         vm.prank(alice);
         permitToken.approve(address(registry), amount);
 
-        vm.prank(alice);
         try registry.createTokenSwapVaultSigned(
-            address(permitToken), alice, bob, 100, commitmentHash, amount, signature
+            address(permitToken), alice, bob, 100, commitmentHash, amount, signature2
         ) {
             assert(false);
         } catch (bytes memory e) {
@@ -950,7 +965,7 @@ contract RegistryAndVaultTest is Test {
         {
             bytes32 structHash = keccak256(
                 abi.encode(
-                    registry.CREATE_VAULT_TYPEHASH(), address(unlistedToken), alice, bob, 100, commitmentHash, amount
+                    registry.CREATE_VAULT_TYPEHASH(), address(unlistedToken), alice, bob, 100, commitmentHash, amount, registry.s_nonces(alice)
                 )
             );
             (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
@@ -1019,7 +1034,7 @@ contract RegistryAndVaultTest is Test {
         bytes memory signature;
         {
             bytes32 structHash = keccak256(
-                abi.encode(registry.CREATE_VAULT_TYPEHASH(), address(feeToken), alice, bob, 100, commitmentHash, amount)
+                abi.encode(registry.CREATE_VAULT_TYPEHASH(), address(feeToken), alice, bob, 100, commitmentHash, amount, registry.s_nonces(alice))
             );
             (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
                 registry.eip712Domain();
@@ -1080,7 +1095,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(
             registry.CREATE_VAULT_TYPEHASH(),
             keccak256(
-                "CreateVaultParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount)"
+                "CreateVaultParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount,uint256 nonce)"
             )
         );
         assertEq(registry.NATIVE_TOKEN(), 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);

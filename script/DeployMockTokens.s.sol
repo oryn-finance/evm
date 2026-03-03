@@ -5,15 +5,15 @@ import {Script, console} from "../lib/forge-std/src/Script.sol";
 import {ERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
 contract DeployMockTokens is Script {
-    function run() external {
+    function run(address _owner) external {
         vm.startBroadcast();
 
         bytes32 saltusdc = keccak256("usdc");
-        USDC x = new USDC{salt: saltusdc}();
+        USDC x = new USDC{salt: saltusdc}(_owner);
         console.log("the address to the deployed USDC: ", address(x));
 
         bytes32 saltwbtc = keccak256("wbtc");
-        WBTC y = new WBTC{salt: saltwbtc}();
+        WBTC y = new WBTC{salt: saltwbtc}(_owner);
         console.log("the address to the deployed WBTC: ", address(y));
 
         vm.stopBroadcast();
@@ -21,8 +21,8 @@ contract DeployMockTokens is Script {
 }
 
 contract USDC is ERC20 {
-    constructor() ERC20("USDC", "USDC") {
-        _mint(msg.sender, 100_000_000_000 * (10 ** decimals()));
+    constructor(address _owner) ERC20("USDC", "USDC") {
+        _mint(_owner, 100_000_000_000 * (10 ** decimals()));
     }
 
     function minttoken(address to, uint256 amount) external {
@@ -35,8 +35,8 @@ contract USDC is ERC20 {
 }
 
 contract WBTC is ERC20 {
-    constructor() ERC20("Wrapped Bitcoin", "WBTC") {
-        _mint(msg.sender, 21_000_000 * (10 ** decimals()));
+    constructor(address _owner) ERC20("Wrapped Bitcoin", "WBTC") {
+        _mint(_owner, 21_000_000 * (10 ** decimals()));
     }
 
     function minttoken(address to, uint256 amount) external {

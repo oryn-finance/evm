@@ -61,22 +61,6 @@ contract SwapRegistry is Ownable, EIP712 {
 
     //////////////////////////////////
     //////////////////////////////////
-    ////////// Events ////////////////
-    //////////////////////////////////
-    //////////////////////////////////
-
-    /// @notice Emitted when a new token vault is created
-    /// @param vaultAddress Address of the newly created vault
-    /// @param creator Address of the vault creator
-    /// @param token Address of the ERC20 token for the vault
-    event VaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
-
-    /// @notice Emitted when a token is whitelisted or blacklisted
-    /// @param tokenAddress Address of the token
-    event WhitelistedToken(address indexed tokenAddress);
-
-    //////////////////////////////////
-    //////////////////////////////////
     /////// Constants ////////////////
     //////////////////////////////////
     //////////////////////////////////
@@ -108,13 +92,19 @@ contract SwapRegistry is Ownable, EIP712 {
 
     //////////////////////////////////
     //////////////////////////////////
-    /////// Constructor //////////////
+    ////////// Events ////////////////
     //////////////////////////////////
     //////////////////////////////////
 
-    constructor(address _owner) EIP712("SwapRegistry", "1.0.0") Ownable(_owner) {
-        i_tokenVaultImplementation = address(new TokenDepositVault());
-    }
+    /// @notice Emitted when a new token vault is created
+    /// @param vaultAddress Address of the newly created vault
+    /// @param creator Address of the vault creator
+    /// @param token Address of the ERC20 token for the vault
+    event VaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
+
+    /// @notice Emitted when a token is whitelisted or blacklisted
+    /// @param tokenAddress Address of the token
+    event WhitelistedToken(address indexed tokenAddress);
 
     //////////////////////////////////
     //////////////////////////////////
@@ -135,6 +125,16 @@ contract SwapRegistry is Ownable, EIP712 {
         require(expiryBlocks > 0, SwapRegistry__ZeroExpiryBlocks());
         require(amount > 0, SwapRegistry__ZeroAmount());
         _;
+    }
+
+    //////////////////////////////////
+    //////////////////////////////////
+    /////// Constructor //////////////
+    //////////////////////////////////
+    //////////////////////////////////
+
+    constructor(address _owner) EIP712("SwapRegistry", "1.0.0") Ownable(_owner) {
+        i_tokenVaultImplementation = address(new TokenDepositVault());
     }
 
     //////////////////////////////////
@@ -280,6 +280,42 @@ contract SwapRegistry is Ownable, EIP712 {
         return _createERC20VaultFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
     }
 
+    /// @notice Predicts the deterministic vault address without creating it
+    /// @param token Address of the ERC20 token for the vault
+    /// @param creator Address of the vault creator
+    /// @param recipient Address receiving the swap
+    /// @param expiryBlocks Number of blocks until expiry
+    /// @param commitmentHash Hash of the swap commitment
+    /// @param amount Minimum required token amount
+    /// @return Address where the vault would be deployed
+    /// @dev Useful for off-chain calculation of vault address before funding
+    /// @dev Reverts if vault already exists at predicted address
+    function getTokenVaultAddress(
+        address token,
+        address creator,
+        address recipient,
+        uint256 expiryBlocks,
+        bytes32 commitmentHash,
+        uint256 amount
+    ) external view safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
+
+        (bytes memory encodedArgs, bytes32 salt) =
+            _getVaultArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
+        address predictedAddr =
+            i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+
+        require(!s_deployedVaults[predictedAddr], SwapRegistry__VaultAlreadyDeployed());
+
+        return predictedAddr;
+    }
+
+    //////////////////////////////////
+    //////////////////////////////////
+    //////// Internal Functions ///////
+    //////////////////////////////////
+    //////////////////////////////////
+
     /// @notice Verifies EIP-712 signature for createTokenSwapVaultSigned
     function _verifyCreateVaultSignature(
         address token,
@@ -318,42 +354,6 @@ contract SwapRegistry is Ownable, EIP712 {
         _deployVault(encodedArgs, salt);
         return addr;
     }
-
-    /// @notice Predicts the deterministic vault address without creating it
-    /// @param token Address of the ERC20 token for the vault
-    /// @param creator Address of the vault creator
-    /// @param recipient Address receiving the swap
-    /// @param expiryBlocks Number of blocks until expiry
-    /// @param commitmentHash Hash of the swap commitment
-    /// @param amount Minimum required token amount
-    /// @return Address where the vault would be deployed
-    /// @dev Useful for off-chain calculation of vault address before funding
-    /// @dev Reverts if vault already exists at predicted address
-    function getTokenVaultAddress(
-        address token,
-        address creator,
-        address recipient,
-        uint256 expiryBlocks,
-        bytes32 commitmentHash,
-        uint256 amount
-    ) external view safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
-        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
-
-        (bytes memory encodedArgs, bytes32 salt) =
-            _getVaultArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
-        address predictedAddr =
-            i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
-
-        require(!s_deployedVaults[predictedAddr], SwapRegistry__VaultAlreadyDeployed());
-
-        return predictedAddr;
-    }
-
-    //////////////////////////////////
-    //////////////////////////////////
-    //////// Internal Functions ///////
-    //////////////////////////////////
-    //////////////////////////////////
 
     /// @notice Executes EIP-2612 permit, reverting with PermitFailed on any failure
     function _executePermit(address token, address creator, uint256 amount, uint256 deadline, bytes calldata signature)

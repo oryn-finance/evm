@@ -35,6 +35,16 @@ contract TokenDepositVault is Initializable {
 
     //////////////////////////////////
     //////////////////////////////////
+    ////// State Variables ///////////
+    //////////////////////////////////
+    //////////////////////////////////
+
+    /// @notice Block number when the vault was initialized and assets were deposited
+    /// @dev Used to enforce swap expiry deadlines
+    uint256 public s_depositedAt;
+
+    //////////////////////////////////
+    //////////////////////////////////
     ////////// Events ////////////////
     //////////////////////////////////
     //////////////////////////////////
@@ -48,16 +58,6 @@ contract TokenDepositVault is Initializable {
     /// @param creator Address that receives the returned assets
     /// @param commitmentHash Hash of the original swap commitment
     event Cancel(address indexed creator, bytes32 commitmentHash);
-
-    //////////////////////////////////
-    //////////////////////////////////
-    ////// State Variables ///////////
-    //////////////////////////////////
-    //////////////////////////////////
-
-    /// @notice Block number when the vault was initialized and assets were deposited
-    /// @dev Used to enforce swap expiry deadlines
-    uint256 public s_depositedAt;
 
     //////////////////////////////////
     //////////////////////////////////

@@ -145,8 +145,7 @@ contract TokenDepositVault is Initializable {
     /// @return recipient Address that can withdraw by revealing commitment
     /// @return expiryBlocks Number of blocks until the swap expires
     /// @return commitmentHash Hash (SHA256) that must be revealed to withdraw
-    /// @dev Internal helper that decodes clone immutable arguments
-    function getSwapParameters() internal view returns (address, address, address, uint256, bytes32) {
+    function getSwapParameters() public view returns (address, address, address, uint256, bytes32) {
         bytes memory args = address(this).fetchCloneArgs();
         return abi.decode(args, (address, address, address, uint256, bytes32));
     }

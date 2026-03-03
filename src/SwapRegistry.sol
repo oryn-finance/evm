@@ -123,13 +123,17 @@ contract SwapRegistry is Ownable, EIP712 {
     /// @param expiryBlocks Block count before the vault expires
     /// @param amount Token amount to be deposited
     modifier safeParams(address creator, address recipient, uint256 expiryBlocks, uint256 amount) {
+        _safeParams(creator, recipient, expiryBlocks, amount);
+        _;
+    }
+
+    function _safeParams(address creator, address recipient, uint256 expiryBlocks, uint256 amount) internal pure {
         require(
             recipient != address(0) && creator != address(0) && creator != recipient,
             SwapRegistry__InvalidAddressParameters()
         );
         require(expiryBlocks > 0, SwapRegistry__ZeroExpiryBlocks());
         require(amount > 0, SwapRegistry__ZeroAmount());
-        _;
     }
 
     //////////////////////////////////
@@ -255,7 +259,7 @@ contract SwapRegistry is Ownable, EIP712 {
 
         _executePermit(token, creator, amount, deadline, signature);
 
-        return _createERC20VaultFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
+        return _createErc20VaultFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
     }
 
     /// @notice Creates a deterministic ERC20 vault using EIP-712 signed authorization (relayer can submit)
@@ -282,7 +286,7 @@ contract SwapRegistry is Ownable, EIP712 {
 
         _verifyCreateVaultSignature(token, creator, recipient, expiryBlocks, commitmentHash, amount, signature);
 
-        return _createERC20VaultFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
+        return _createErc20VaultFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
     }
 
     /// @notice Predicts the deterministic vault address without creating it
@@ -340,7 +344,7 @@ contract SwapRegistry is Ownable, EIP712 {
     }
 
     /// @notice Pulls ERC20 from creator to vault address and deploys vault
-    function _createERC20VaultFromCreator(
+    function _createErc20VaultFromCreator(
         address token,
         address creator,
         address recipient,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Script, console} from "../lib/forge-std/src/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 import {SwapRegistry} from "../src/SwapRegistry.sol";
 
 contract DeploySwapRegistry is Script {

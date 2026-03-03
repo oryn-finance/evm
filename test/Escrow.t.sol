@@ -113,7 +113,14 @@ contract RegistryAndVaultTest is Test {
     ) internal view returns (bytes memory) {
         bytes32 structHash = keccak256(
             abi.encode(
-                registry.CREATE_ESCROW_TYPEHASH(), token, creator, recipient, expiryBlocks, commitmentHash, amount, nonce
+                registry.CREATE_ESCROW_TYPEHASH(),
+                token,
+                creator,
+                recipient,
+                expiryBlocks,
+                commitmentHash,
+                amount,
+                nonce
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, MessageHashUtils.toTypedDataHash(_domainSeparator(), structHash));
@@ -452,9 +459,7 @@ contract RegistryAndVaultTest is Test {
 
         assertEq(predictedAddr.balance, 1000);
 
-        registry.createEscrow(
-            registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmentHash, 1000
-        );
+        registry.createEscrow(registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmentHash, 1000);
 
         vm.expectRevert(EscrowVault.EscrowVault__NativeTransferFailed.selector);
         EscrowVault(predictedAddr).claim(abi.encode(commitment));
@@ -521,9 +526,8 @@ contract RegistryAndVaultTest is Test {
 
         vm.deal(alice, amount);
         vm.prank(alice);
-        address escrow = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, bob, 50, commitmentHash, amount
-        );
+        address escrow =
+            registry.createEscrowNative{value: amount}(registry.NATIVE_TOKEN(), alice, bob, 50, commitmentHash, amount);
 
         uint256 bobBefore = bob.balance;
         EscrowVault(escrow).claim(abi.encode(commitment));
@@ -559,8 +563,7 @@ contract RegistryAndVaultTest is Test {
         vm.stopPrank();
         bytes32 commitmentHash = sha256("x");
         uint256 amount = 1 ether;
-        address predicted =
-            registry.getEscrowAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount);
+        address predicted = registry.getEscrowAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount);
         vm.deal(alice, amount);
         vm.prank(alice);
         address returned = registry.createEscrowNative{value: amount}(
@@ -875,9 +878,8 @@ contract RegistryAndVaultTest is Test {
 
         address predicted = registry.getEscrowAddress(address(permitToken), alice, bob, 100, commitmentHash, amount);
 
-        address escrow = registry.createEscrowSigned(
-            address(permitToken), alice, bob, 100, commitmentHash, amount, signature
-        );
+        address escrow =
+            registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
 
         assertEq(escrow, predicted);
         assertTrue(registry.s_deployedEscrows(escrow));
@@ -891,7 +893,8 @@ contract RegistryAndVaultTest is Test {
 
         uint256 bobPk = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
         // Bob signs for himself as creator, but call passes alice as creator
-        bytes memory signature = _signCreateEscrow(bobPk, address(permitToken), bob, bob, 100, commitmentHash, amount, 0);
+        bytes memory signature =
+            _signCreateEscrow(bobPk, address(permitToken), bob, bob, 100, commitmentHash, amount, 0);
 
         vm.prank(alice);
         assertTrue(permitToken.approve(address(registry), amount));

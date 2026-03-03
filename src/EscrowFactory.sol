@@ -411,8 +411,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
 
         (bytes memory encodedArgs, bytes32 salt) =
             _getEscrowArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
-        address predictedAddr =
-            i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+        address predictedAddr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedEscrows[predictedAddr], EscrowFactory__EscrowAlreadyDeployed());
 

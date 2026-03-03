@@ -1,6 +1,6 @@
 <p align="center">
   <strong>Oryn Finance</strong><br/>
-  EVM Atomic Swap Escrow
+  Oryn Escrow
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 ## Overview
 
-HTLC-based escrow system for trustless atomic swaps on any EVM chain. Supports ERC20 tokens and native ETH. Funds are locked in deterministic minimal-proxy escrows — the recipient **claims** by revealing a SHA-256 preimage, or the creator **refunds** after a block-based expiry.
+HTLC-based escrow system for trustless cross-chain settlement on any EVM chain. Supports ERC20 tokens and native ETH. Funds are locked in deterministic minimal-proxy escrows — the recipient **claims** by revealing a SHA-256 preimage, or the creator **refunds** after a block-based expiry.
 
 ## Key Features
 

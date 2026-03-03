@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the EVM Atomic Swap Escrow contracts are documented in this file.
+All notable changes to the Oryn Escrow contracts are documented in this file.
 
 ## [Unreleased]
 

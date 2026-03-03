@@ -13,135 +13,60 @@
 
 ## Overview
 
-Hash-locked atomic swap system for ERC20 tokens and native ETH on any EVM chain. A creator deposits funds into a deterministic minimal-proxy vault; the recipient withdraws by revealing a SHA-256 preimage, or the creator reclaims funds after a block-based expiry window.
+HTLC-based escrow system for trustless atomic swaps on any EVM chain. Supports ERC20 tokens and native ETH. Funds are locked in deterministic minimal-proxy escrows — the recipient **claims** by revealing a SHA-256 preimage, or the creator **refunds** after a block-based expiry.
 
-## Architecture
+## Key Features
 
-```
-                      ┌──────────────────────────────┐
-                      │        SwapRegistry           │
-                      │  (Factory / Entry Point)      │
-                      │                               │
-                      │  - Owner whitelists tokens    │
-                      │  - Deploys deterministic      │
-                      │    clones with immutable args  │
-                      │  - Validates params & sigs    │
-                      └──────────┬───────────────────┘
-                                 │ cloneDeterministicWithImmutableArgs
-                                 ▼
-                      ┌──────────────────────────────┐
-                      │     TokenDepositVault         │
-                      │  (Minimal Proxy Clone)        │
-                      │                               │
-                      │  Immutable args:              │
-                      │   token, creator, recipient,  │
-                      │   expiryBlocks, commitmentHash│
-                      │                               │
-                      │  - withdraw(preimage)         │
-                      │  - cancelSwap()               │
-                      └──────────────────────────────┘
-```
+- **Deterministic escrow addresses** — predict the escrow address before funding, enabling pre-funded workflows
+- **Four creation paths** — pre-fund, native ETH call, EIP-2612 permit, and EIP-712 signed (relayer-friendly)
+- **Batch creation** — deploy multiple escrows atomically in a single transaction
+- **Pausable** — owner can halt new escrow creation without affecting existing claims/refunds
+- **Fee-on-transfer protection** — post-transfer balance checks reject deflationary tokens
+- **100% test coverage** — 97 tests across unit, integration, and fuzz suites
 
 ## Contracts
 
-### SwapRegistry
+| Contract | Path | Description |
+|---|---|---|
+| **EscrowFactory** | `src/EscrowFactory.sol` | Factory and entry point. Deploys deterministic escrow clones, manages token whitelist, validates EIP-712 signatures. |
+| **EscrowVault** | `src/EscrowVault.sol` | Minimal proxy clone per escrow. Holds funds with hash-lock (`claim`) and time-lock (`refund`) settlement. |
 
-> `src/SwapRegistry.sol` — Factory contract and primary entry point.
+## API Reference
 
-| Feature | Detail |
+### EscrowFactory
+
+| Function | Description |
 |---|---|
-| **Ownership** | `Ownable` — owner whitelists/blacklists tokens |
-| **Deterministic addresses** | Clone addresses derived from `(chainId, token, creator, recipient, expiryBlocks, commitmentHash)` |
-| **Duplicate prevention** | `s_deployedVaults` mapping prevents reuse of vault addresses |
-| **EIP-712 signatures** | Typed data signing with per-creator nonces for replay protection |
-| **Fee-on-transfer guard** | Post-transfer balance check rejects deflationary tokens |
+| `createEscrow(...)` | Create a pre-funded escrow (creator transfers tokens to predicted address first) |
+| `createEscrowNative(...)` | Create a native ETH escrow in one transaction via `msg.value` |
+| `createEscrowPermit(...)` | Create an ERC20 escrow using EIP-2612 permit (gasless approval) |
+| `createEscrowSigned(...)` | Create an ERC20 escrow via EIP-712 signature (relayer can submit) |
+| `createEscrowBatch(...)` | Create multiple pre-funded escrows atomically |
+| `getEscrowAddress(...)` | Predict the deterministic escrow address before funding |
+| `whitelistToken(address)` | Add a token to the allowed list (owner only) |
+| `delistToken(address)` | Remove a token from the allowed list (owner only) |
+| `pause()` / `unpause()` | Toggle escrow creation (owner only) |
+| `incrementNonce()` | Invalidate all pending EIP-712 signatures |
 
-**Vault creation paths:**
+### EscrowVault
 
-| Method | Use Case | Approval |
-|---|---|---|
-| `createTokenSwapVault` | Pre-funded vault (ERC20 or native) | Creator transfers to predicted address beforehand |
-| `createTokenSwapVaultNativeCall` | Native ETH in one transaction | `msg.value` forwarded to vault |
-| `createTokenSwapVaultPermit` | ERC20 with EIP-2612 permit | Gasless approval via signature |
-| `createTokenSwapVaultSigned` | Relayer-submitted ERC20 vault | EIP-712 signed params + prior `approve` |
-
-### TokenDepositVault
-
-> `src/TokenDepositVault.sol` — Minimal proxy clone deployed per swap.
-
-| Feature | Detail |
+| Function | Description |
 |---|---|
-| **Immutable args** | `token`, `creator`, `recipient`, `expiryBlocks`, `commitmentHash` — stored in clone bytecode |
-| **Settlement guard** | `s_settled` flag prevents double-withdraw, double-cancel, or withdraw-after-cancel |
-| **Hash-lock** | `sha256(preimage) == commitmentHash` required for withdrawal |
-| **Time-lock** | `block.number > s_depositedAt + expiryBlocks` required for cancellation |
-| **Dual asset** | Supports ERC20 (via `SafeERC20`) and native ETH (sentinel `0xEee...eE`) |
+| `claim(bytes preimage)` | Recipient claims funds by revealing the SHA-256 preimage |
+| `refund()` | Creator reclaims funds after the expiry window has passed |
+| `getEscrowParameters()` | Returns immutable escrow params: `token`, `creator`, `recipient`, `expiryBlocks`, `commitmentHash` |
 
-## Swap Lifecycle
+## Security
 
-```
- Creator                    SwapRegistry                  Vault                     Recipient
-    │                            │                          │                           │
-    │  1. getTokenVaultAddress() │                          │                           │
-    │ ─────────────────────────► │                          │                           │
-    │  ◄── predicted address ─── │                          │                           │
-    │                            │                          │                           │
-    │  2. Fund + Create          │                          │                           │
-    │ ─────────────────────────► │ ── deploy clone ───────► │                           │
-    │                            │                          │                           │
-    │                            │                          │  3a. withdraw(preimage)   │
-    │                            │                          │ ◄──────────────────────── │
-    │                            │                          │ ── transfer to recipient ─┤
-    │                            │                          │                           │
-    │  3b. cancelSwap()          │                          │                           │
-    │  (after expiry)            │                          │                           │
-    │ ─────────────────────────────────────────────────────►│                           │
-    │ ◄── refund to creator ─────────────────────────────── │                           │
-```
-
-| Step | Actor | Action |
-|---|---|---|
-| 1 | Owner | Whitelist token via `whitelistToken(token, true)` |
-| 2 | Creator | Call `getTokenVaultAddress(...)` to get the predicted vault address |
-| 3 | Creator / Relayer | Fund and create vault via one of the four creation methods |
-| 4a | Recipient | Call `withdraw(preimage)` — funds transferred to recipient |
-| 4b | Creator | Call `cancelSwap()` after expiry — funds returned to creator |
-
-## Security Model
-
-- **Hash-lock**: SHA-256 commitment scheme — only the preimage holder can withdraw
-- **Time-lock**: Block-based expiry ensures creator can reclaim after deadline
-- **Settlement guard**: `s_settled` flag makes vaults single-use (no re-entrancy or double-spend)
-- **Signature replay protection**: Per-creator nonces for EIP-712 signed vault creation
-- **Commitment validation**: `bytes32(0)` commitment hashes are rejected
-- **Fee-on-transfer protection**: Post-transfer balance checks prevent under-funded vaults
-- **Gas-limited native transfers**: 30,000 gas cap on ETH transfers (supports smart contract wallets)
-- **SafeERC20**: All ERC20 interactions use OpenZeppelin's SafeERC20
-
-## Test Coverage
-
-```
-╭──────────────────────┬──────────────┬──────────────┬──────────────┬──────────────╮
-│ Contract             │ % Lines      │ % Statements │ % Branches   │ % Functions  │
-╞══════════════════════╪══════════════╪══════════════╪══════════════╪══════════════╡
-│ SwapRegistry.sol     │ 100.00%      │ 100.00%      │ 100.00%      │ 100.00%      │
-├──────────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
-│ TokenDepositVault.sol│ 100.00%      │ 100.00%      │ 100.00%      │ 100.00%      │
-╰──────────────────────┴──────────────┴──────────────┴──────────────┴──────────────╯
-```
-
-**75 tests** — unit, integration, and fuzz:
-
-| Category | Count | Covers |
-|---|---|---|
-| Vault creation (all 4 paths) | 20 | Happy path, parameter validation, duplicate prevention |
-| Withdraw | 10 | Valid/invalid commitment, third-party caller, double-withdraw, events |
-| Cancel | 8 | Before/after expiry, double-cancel, cancel-after-withdraw, events |
-| Native ETH | 12 | Deposit, withdraw, cancel, contract recipient failures |
-| Permit flow | 7 | Valid permit, expired, non-permit token, fee-on-transfer |
-| Signed flow | 9 | Valid signature, invalid signer, nonce replay, vault reuse |
-| Fuzz | 5 | Amounts, expiry bounds, commitment brute-force, boundary conditions |
-| Access control | 4 | Owner-only whitelist, parameter validation across paths |
+| Mechanism | Detail |
+|---|---|
+| **Hash-lock** | SHA-256 commitment — only the preimage holder can claim |
+| **Time-lock** | Block-based expiry window for creator refunds |
+| **Settlement guard** | `s_settled` flag enforces single-use (no double-spend or re-entrancy) |
+| **Replay protection** | Per-creator nonces for EIP-712 signed creation |
+| **Commitment validation** | Zero-hash commitments rejected at creation |
+| **Gas-limited transfers** | 30,000 gas cap on native ETH transfers (smart contract wallet compatible) |
+| **SafeERC20** | All ERC20 interactions via OpenZeppelin's SafeERC20 |
 
 ## Getting Started
 
@@ -157,28 +82,17 @@ cd evm_escrow
 forge install
 ```
 
-### Build
+### Build & Test
 
 ```bash
 forge build
-```
-
-### Test
-
-```bash
 forge test
-```
-
-### Coverage
-
-```bash
 forge coverage
 ```
 
 ### Deploy
 
 ```bash
-# Deploy to a network
 forge script script/DeployRegistry.s.sol --sig "run(address)" <OWNER_ADDRESS> \
   --rpc-url <RPC_URL> --broadcast --verify
 ```
@@ -186,15 +100,14 @@ forge script script/DeployRegistry.s.sol --sig "run(address)" <OWNER_ADDRESS> \
 ## Project Structure
 
 ```
-├── src/
-│   ├── SwapRegistry.sol          # Factory — vault creation, token whitelist, signature verification
-│   └── TokenDepositVault.sol     # Vault — withdraw, cancel, immutable clone args
-├── test/
-│   └── Escrow.t.sol              # 75 tests (unit + fuzz)
-├── script/
-│   ├── DeployRegistry.s.sol      # Production deploy script
-│   └── DeployMockTokens.s.sol    # Testnet token deployment
-└── foundry.toml                  # Foundry configuration
+src/
+  EscrowFactory.sol        Factory — escrow creation, token whitelist, signature verification
+  EscrowVault.sol          Escrow — claim, refund, immutable clone args
+test/
+  Escrow.t.sol             97 tests (unit + integration + fuzz)
+script/
+  DeployRegistry.s.sol     Production deploy script
+  DeployMockTokens.s.sol   Testnet token deployment
 ```
 
 ## Dependencies
@@ -202,7 +115,7 @@ forge script script/DeployRegistry.s.sol --sig "run(address)" <OWNER_ADDRESS> \
 | Package | Version | Usage |
 |---|---|---|
 | [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts) | 5.x | `Ownable`, `SafeERC20`, `ECDSA`, `EIP712`, `Clones` |
-| [OpenZeppelin Contracts Upgradeable](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable) | 5.x | `Initializable` (vault clone initialization guard) |
+| [OpenZeppelin Contracts Upgradeable](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable) | 5.x | `Initializable` |
 | [Forge Std](https://github.com/foundry-rs/forge-std) | Latest | Test framework |
 
 ## License

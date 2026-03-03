@@ -4,9 +4,9 @@ pragma solidity 0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {SwapRegistry} from "../src/SwapRegistry.sol";
 import {TokenDepositVault} from "../src/TokenDepositVault.sol";
-import {ERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
-import {ERC20Permit} from "../lib/openzeppelin-contracts/contracts/token/ERC20/extensions/ERC20Permit.sol";
-import {MessageHashUtils} from "../lib/openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract ERC20Impl is ERC20 {
     constructor(string memory name, string memory symbol, address mintTo) ERC20(name, symbol) {

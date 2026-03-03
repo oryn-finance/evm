@@ -21,7 +21,7 @@ contract DeploySwapRegistry is Script {
         tokens[1] = address(0xcbD43C2a7b6cB3df228FDd49A535C82D673109eB);
 
         for (uint256 i = 0; i < tokens.length; i++) {
-            registry.whitelistToken(tokens[i], true);
+            registry.whitelistToken(tokens[i]);
         }
 
         vm.stopBroadcast();

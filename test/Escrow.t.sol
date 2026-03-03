@@ -77,10 +77,10 @@ contract RegistryAndVaultTest is Test {
 
         registry = new SwapRegistry(bob);
 
-        registry.whitelistToken(address(token1), true);
-        registry.whitelistToken(address(token2), true);
-        registry.whitelistToken(address(permitToken), true);
-        registry.whitelistToken(address(feeToken), true);
+        registry.whitelistToken(address(token1));
+        registry.whitelistToken(address(token2));
+        registry.whitelistToken(address(permitToken));
+        registry.whitelistToken(address(feeToken));
 
         vm.stopPrank();
     }
@@ -151,12 +151,27 @@ contract RegistryAndVaultTest is Test {
     function test_whitelistToken_RevertsWhenNotOwner() public {
         vm.prank(alice);
         vm.expectRevert();
-        registry.whitelistToken(address(token1), true);
+        registry.whitelistToken(address(token1));
     }
 
-    function test_whitelistToken_Blacklist() public {
+    function test_delistToken_RevertsWhenNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.delistToken(address(token1));
+    }
+
+    function test_whitelistToken_EmitsTokenWhitelisted() public {
         vm.prank(bob);
-        registry.whitelistToken(address(token1), false);
+        vm.expectEmit(true, false, false, false);
+        emit SwapRegistry.TokenWhitelisted(address(token1));
+        registry.whitelistToken(address(token1));
+    }
+
+    function test_delistToken_Success() public {
+        vm.prank(bob);
+        vm.expectEmit(true, false, false, false);
+        emit SwapRegistry.TokenDelisted(address(token1));
+        registry.delistToken(address(token1));
 
         assertFalse(registry.s_whitelistedTokens(address(token1)));
 
@@ -294,7 +309,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_witdrawShouldFailIfInCorrectCommitment() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -342,7 +357,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_depositNativeETH() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -368,7 +383,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_cancelNativeEscrow() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -397,7 +412,7 @@ contract RegistryAndVaultTest is Test {
     function test_shouldntAllowSameAddressVault() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -421,7 +436,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_withdrawAndRefundWillFailIfTheyAreContractWIthOutReceiveOrFallBack() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -454,7 +469,7 @@ contract RegistryAndVaultTest is Test {
     function test_NativeVaultWontBeCreatedWithOutBalance() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -473,7 +488,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_createTokenSwapVaultNativeCall_Success() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -497,7 +512,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_createTokenSwapVaultNativeCall_WithdrawWorks() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("secret");
@@ -518,7 +533,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_createTokenSwapVaultNativeCall_CancelAfterExpiryWorks() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitmentHash = sha256(abi.encodePacked("any"));
@@ -540,7 +555,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_createTokenSwapVaultNativeCall_ReturnsCorrectAddress() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
         bytes32 commitmentHash = sha256("x");
         uint256 amount = 1 ether;
@@ -556,7 +571,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_createTokenSwapVaultNativeCall_RevertWhenTokenNotNative() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -569,7 +584,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenMsgValueMismatch() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -591,7 +606,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenVaultAlreadyDeployed() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 commitmentHash = sha256("x");
@@ -609,7 +624,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenNativeDepositFailed() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 commitmentHash = sha256("x");
@@ -628,7 +643,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenCreatorZero() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -641,7 +656,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenRecipientZero() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -654,7 +669,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenCreatorEqualsRecipient() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -667,7 +682,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenZeroExpiryBlocks() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -680,7 +695,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertWhenZeroAmount() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -693,7 +708,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_RevertsOnZeroCommitmentHash() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         hoax(alice, 1 ether);
@@ -704,7 +719,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultNativeCall_EmitsTokenVaultCreated() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 commitmentHash = sha256("x");
@@ -743,7 +758,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultPermit_RevertWhenNativeToken() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -888,7 +903,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultSigned_RevertWhenNativeToken() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h = sha256("x");
@@ -1072,7 +1087,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_withdraw_RevertsOnDoubleWithdraw_NativeETH() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -1094,7 +1109,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_cancel_RevertsOnDoubleCancel_NativeETH() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitmentHash = sha256(abi.encodePacked("any"));
@@ -1134,7 +1149,7 @@ contract RegistryAndVaultTest is Test {
 
     function test_withdraw_ThirdPartyCallerFundsGoToRecipient_NativeETH() public {
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("hello");
@@ -1287,7 +1302,7 @@ contract RegistryAndVaultTest is Test {
         expiryBlocks = bound(expiryBlocks, 1, 1_000_000);
 
         vm.startPrank(bob);
-        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
 
         bytes32 commitment = sha256("fuzz-native");
@@ -1378,7 +1393,7 @@ contract RegistryAndVaultTest is Test {
     function test_pause_BlocksCreateTokenSwapVaultNativeCall() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         registry.pause();
         vm.stopPrank();
 
@@ -1586,7 +1601,7 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultBatch_NativeETH() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
-        registry.whitelistToken(nativeToken, true);
+        registry.whitelistToken(nativeToken);
         vm.stopPrank();
 
         bytes32 h1 = sha256("batch-native-1");

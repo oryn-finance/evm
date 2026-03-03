@@ -137,9 +137,13 @@ contract SwapRegistry is Ownable, Pausable, EIP712 {
         uint256 amount
     );
 
-    /// @notice Emitted when a token is whitelisted or blacklisted
+    /// @notice Emitted when a token is added to the whitelist
     /// @param tokenAddress Address of the token
-    event WhitelistedToken(address indexed tokenAddress);
+    event TokenWhitelisted(address indexed tokenAddress);
+
+    /// @notice Emitted when a token is removed from the whitelist
+    /// @param tokenAddress Address of the token
+    event TokenDelisted(address indexed tokenAddress);
 
     //////////////////////////////////
     //////////////////////////////////
@@ -200,13 +204,20 @@ contract SwapRegistry is Ownable, Pausable, EIP712 {
         s_nonces[msg.sender]++;
     }
 
-    /// @notice Whitelists or blacklists an ERC20 token for swap usage
-    /// @param _tokenAddress The ERC20 token contract address to modify
-    /// @param _status True to whitelist, false to blacklist the token
+    /// @notice Adds a token to the whitelist for swap usage
+    /// @param _tokenAddress The ERC20 token contract address to whitelist
     /// @dev Only callable by contract owner
-    function whitelistToken(address _tokenAddress, bool _status) external onlyOwner {
-        s_whitelistedTokens[_tokenAddress] = _status;
-        emit WhitelistedToken(_tokenAddress);
+    function whitelistToken(address _tokenAddress) external onlyOwner {
+        s_whitelistedTokens[_tokenAddress] = true;
+        emit TokenWhitelisted(_tokenAddress);
+    }
+
+    /// @notice Removes a token from the whitelist
+    /// @param _tokenAddress The ERC20 token contract address to delist
+    /// @dev Only callable by contract owner
+    function delistToken(address _tokenAddress) external onlyOwner {
+        s_whitelistedTokens[_tokenAddress] = false;
+        emit TokenDelisted(_tokenAddress);
     }
 
     /// @notice Creates a new deterministic token deposit vault

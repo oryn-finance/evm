@@ -20,6 +20,30 @@ contract ERC20PermitImpl is ERC20Permit {
     }
 }
 
+/// @notice Contract with no receive/fallback - rejects ETH transfers (for coverage: NativeDepositFailed)
+contract NoReceive {
+    // no receive, no fallback - .call{value}("") will fail
+
+    }
+
+/// @notice Fee-on-transfer token: 10% fee on every transfer (recipient gets 90%)
+contract ERC20FeeOnTransfer is ERC20 {
+    constructor(string memory name, string memory symbol, address mintTo) ERC20(name, symbol) {
+        _mint(mintTo, 100_000_000 * 10 ** decimals());
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        if (to != address(0) && from != address(0)) {
+            uint256 fee = value / 10;
+            uint256 net = value - fee;
+            super._update(from, to, net);
+            super._update(from, address(this), fee);
+        } else {
+            super._update(from, to, value);
+        }
+    }
+}
+
 contract RegistryAndVaultTest is Test {
     event TokenVaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
 
@@ -27,6 +51,7 @@ contract RegistryAndVaultTest is Test {
     ERC20Impl token1;
     ERC20Impl token2;
     ERC20PermitImpl permitToken;
+    ERC20FeeOnTransfer feeToken;
 
     // addresses (alice uses known pk for permit/signed tests)
     uint256 constant ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
@@ -40,12 +65,14 @@ contract RegistryAndVaultTest is Test {
         token1 = new ERC20Impl("TestCoin1", "TC1", bob);
         token2 = new ERC20Impl("TestCoin2", "TC2", bob);
         permitToken = new ERC20PermitImpl("PermitCoin", "PC", alice);
+        feeToken = new ERC20FeeOnTransfer("FeeCoin", "FC", bob);
 
         registry = new SwapRegistry(bob);
 
         registry.whitelistToken(address(token1), true);
         registry.whitelistToken(address(token2), true);
         registry.whitelistToken(address(permitToken), true);
+        registry.whitelistToken(address(feeToken), true);
 
         vm.stopPrank();
     }
@@ -492,6 +519,30 @@ contract RegistryAndVaultTest is Test {
         }
     }
 
+    function test_createTokenSwapVaultNativeCall_RevertWhenNativeDepositFailed() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 1 ether;
+        vm.deal(alice, amount);
+
+        address predicted = registry.getTokenVaultAddress(nativeToken, alice, bob, 100, commitmentHash, amount);
+        NoReceive noReceive = new NoReceive();
+        vm.etch(predicted, address(noReceive).code);
+
+        vm.prank(alice);
+        try registry.createTokenSwapVaultNativeCall{value: amount}(
+            nativeToken, alice, bob, 100, commitmentHash, amount
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__NativeDepositFailed.selector);
+        }
+    }
+
     function test_createTokenSwapVaultNativeCall_RevertWhenCreatorZero() public {
         vm.startPrank(bob);
         address nativeToken = registry.NATIVE_TOKEN();
@@ -598,31 +649,27 @@ contract RegistryAndVaultTest is Test {
         uint256 amount = 500;
         uint256 deadline = block.timestamp + 3600;
 
-        bytes32 PERMIT_TYPEHASH = keccak256(
-            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
-        );
-        bytes32 structHash = keccak256(
-            abi.encode(
-                PERMIT_TYPEHASH,
-                alice,
-                address(registry),
-                amount,
-                permitToken.nonces(alice),
-                deadline
-            )
-        );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(
-            permitToken.DOMAIN_SEPARATOR(),
-            structHash
-        );
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, digest);
+        bytes memory signature;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                    alice,
+                    address(registry),
+                    amount,
+                    permitToken.nonces(alice),
+                    deadline
+                )
+            );
+            (uint8 v, bytes32 r, bytes32 s) =
+                vm.sign(ALICE_PK, MessageHashUtils.toTypedDataHash(permitToken.DOMAIN_SEPARATOR(), structHash));
+            signature = abi.encodePacked(r, s, v);
+        }
 
-        address predicted = registry.getTokenVaultAddress(
-            address(permitToken), alice, bob, 100, commitmentHash, amount
-        );
+        address predicted = registry.getTokenVaultAddress(address(permitToken), alice, bob, 100, commitmentHash, amount);
 
         address vault = registry.createTokenSwapVaultPermit(
-            address(permitToken), alice, bob, 100, commitmentHash, amount, deadline, v, r, s
+            address(permitToken), alice, bob, 100, commitmentHash, amount, deadline, signature
         );
 
         assertEq(vault, predicted);
@@ -643,7 +690,14 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, amount);
         vm.prank(alice);
         try registry.createTokenSwapVaultPermit(
-            nativeToken, alice, bob, 100, commitmentHash, amount, deadline, 27, bytes32(0), bytes32(0)
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            deadline,
+            abi.encodePacked(bytes32(0), bytes32(0), uint8(27))
         ) {
             assert(false);
         } catch (bytes memory e) {
@@ -656,40 +710,34 @@ contract RegistryAndVaultTest is Test {
     function test_createTokenSwapVaultSigned_Success() public {
         bytes32 commitmentHash = sha256(abi.encodePacked("signed-secret"));
         uint256 amount = 300;
-        // uint256 nonce = registry.nonces(alice);
-        uint256 nonce = 1;
 
-        bytes32 structHash = keccak256(
-            abi.encode(
-                registry.CREATE_VAULT_TYPEHASH(),
-                address(permitToken),
-                alice,
-                bob,
-                100,
-                commitmentHash,
-                amount,
-                nonce
-            )
-        );
-        (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
-            registry.eip712Domain();
-        bytes32 typeHash = keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-        );
-        bytes32 domainSeparator = keccak256(
-            abi.encode(typeHash, keccak256(bytes(name)), keccak256(bytes(version)), chainId, verifyingContract)
-        );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory signature;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    registry.CREATE_VAULT_TYPEHASH(), address(permitToken), alice, bob, 100, commitmentHash, amount
+                )
+            );
+            (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+                registry.eip712Domain();
+            bytes32 domainSeparator = keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            );
+            (uint8 v, bytes32 r, bytes32 s) =
+                vm.sign(ALICE_PK, MessageHashUtils.toTypedDataHash(domainSeparator, structHash));
+            signature = abi.encodePacked(r, s, v);
+        }
 
         vm.prank(alice);
         permitToken.approve(address(registry), amount);
 
-        address predicted = registry.getTokenVaultAddress(
-            address(permitToken), alice, bob, 100, commitmentHash, amount
-        );
+        address predicted = registry.getTokenVaultAddress(address(permitToken), alice, bob, 100, commitmentHash, amount);
 
         address vault = registry.createTokenSwapVaultSigned(
             address(permitToken), alice, bob, 100, commitmentHash, amount, signature
@@ -704,30 +752,35 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256("x");
         uint256 amount = 100;
 
-        // Sign with wrong creator (bob instead of alice) - signature won't match
-        bytes32 structHash = keccak256(
-            abi.encode(
-                registry.CREATE_VAULT_TYPEHASH(),
-                address(permitToken),
-                bob, // wrong: should be alice
-                bob,
-                100,
-                commitmentHash,
-                amount
-            )
-        );
-        (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
-            registry.eip712Domain();
-        bytes32 typeHash = keccak256(
-            "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-        );
-        bytes32 domainSeparator = keccak256(
-            abi.encode(typeHash, keccak256(bytes(name)), keccak256(bytes(version)), chainId, verifyingContract)
-        );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
-        uint256 bobPk = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPk, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory signature;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    registry.CREATE_VAULT_TYPEHASH(),
+                    address(permitToken),
+                    bob, // wrong: should be alice
+                    bob,
+                    100,
+                    commitmentHash,
+                    amount
+                )
+            );
+            (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+                registry.eip712Domain();
+            bytes32 domainSeparator = keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            );
+            uint256 bobPk = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+            (uint8 v, bytes32 r, bytes32 s) =
+                vm.sign(bobPk, MessageHashUtils.toTypedDataHash(domainSeparator, structHash));
+            signature = abi.encodePacked(r, s, v);
+        }
 
         vm.prank(alice);
         permitToken.approve(address(registry), amount);
@@ -740,5 +793,296 @@ contract RegistryAndVaultTest is Test {
         } catch (bytes memory e) {
             assert(bytes32(e) == SwapRegistry.SwapRegistry__InvalidSignature.selector);
         }
+    }
+
+    function test_createTokenSwapVaultSigned_RevertWhenNativeToken() public {
+        vm.startPrank(bob);
+        address nativeToken = registry.NATIVE_TOKEN();
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 100;
+        bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+
+        vm.prank(bob);
+        try registry.createTokenSwapVaultSigned(nativeToken, alice, bob, 100, commitmentHash, amount, signature) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__OnlyERC20Allowed.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultSigned_RevertWhenVaultAlreadyDeployed() public {
+        bytes32 commitmentHash = sha256(abi.encodePacked("signed-secret"));
+        uint256 amount = 300;
+
+        bytes memory signature;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    registry.CREATE_VAULT_TYPEHASH(), address(permitToken), alice, bob, 100, commitmentHash, amount
+                )
+            );
+            (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+                registry.eip712Domain();
+            bytes32 domainSeparator = keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            );
+            (uint8 v, bytes32 r, bytes32 s) =
+                vm.sign(ALICE_PK, MessageHashUtils.toTypedDataHash(domainSeparator, structHash));
+            signature = abi.encodePacked(r, s, v);
+        }
+
+        vm.prank(alice);
+        permitToken.approve(address(registry), amount);
+
+        vm.prank(alice);
+        registry.createTokenSwapVaultSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
+
+        vm.prank(alice);
+        permitToken.approve(address(registry), amount);
+
+        vm.prank(alice);
+        try registry.createTokenSwapVaultSigned(
+            address(permitToken), alice, bob, 100, commitmentHash, amount, signature
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__VaultAlreadyDeployed.selector);
+        }
+    }
+
+    // ========== Coverage: PermitFailed, blacklist, InvalidCommitment, InsufficientFunds, constants ==========
+
+    function test_createTokenSwapVaultPermit_RevertWhenPermitExpired() public {
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 100;
+        uint256 deadline = block.timestamp - 1; // expired
+
+        bytes memory signature;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                    alice,
+                    address(registry),
+                    amount,
+                    permitToken.nonces(alice),
+                    deadline
+                )
+            );
+            (uint8 v, bytes32 r, bytes32 s) =
+                vm.sign(ALICE_PK, MessageHashUtils.toTypedDataHash(permitToken.DOMAIN_SEPARATOR(), structHash));
+            signature = abi.encodePacked(r, s, v);
+        }
+
+        vm.prank(alice);
+        try registry.createTokenSwapVaultPermit(
+            address(permitToken), alice, bob, 100, commitmentHash, amount, deadline, signature
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__PermitFailed.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultPermit_RevertWhenPermitFailsNonPermitToken() public {
+        // token1 has no permit - permit() will revert, hitting PermitFailed catch
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 100;
+        uint256 deadline = block.timestamp + 3600;
+        bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+
+        vm.prank(bob);
+        token1.transfer(alice, 200);
+        vm.prank(alice);
+        token1.approve(address(registry), 100);
+
+        vm.prank(alice);
+        try registry.createTokenSwapVaultPermit(
+            address(token1), alice, bob, 100, commitmentHash, amount, deadline, signature
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__PermitFailed.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultPermit_RevertWhenTokenNotWhitelisted() public {
+        // Deploy a token that's not whitelisted
+        vm.prank(bob);
+        ERC20Impl unlistedToken = new ERC20Impl("Unlisted", "UL", alice);
+        vm.prank(alice);
+        unlistedToken.approve(address(registry), 100);
+
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 100;
+        uint256 deadline = block.timestamp + 3600;
+        bytes memory signature = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+
+        vm.prank(alice);
+        try registry.createTokenSwapVaultPermit(
+            address(unlistedToken), alice, bob, 100, commitmentHash, amount, deadline, signature
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__TokenNotAccepted.selector);
+        }
+    }
+
+    function test_createTokenSwapVaultSigned_RevertWhenTokenNotWhitelisted() public {
+        vm.prank(bob);
+        ERC20Impl unlistedToken = new ERC20Impl("Unlisted", "UL", alice);
+        vm.prank(alice);
+        unlistedToken.approve(address(registry), 100);
+
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 100;
+
+        bytes memory signature;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    registry.CREATE_VAULT_TYPEHASH(), address(unlistedToken), alice, bob, 100, commitmentHash, amount
+                )
+            );
+            (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+                registry.eip712Domain();
+            bytes32 domainSeparator = keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            );
+            (uint8 v, bytes32 r, bytes32 s) =
+                vm.sign(ALICE_PK, MessageHashUtils.toTypedDataHash(domainSeparator, structHash));
+            signature = abi.encodePacked(r, s, v);
+        }
+
+        vm.prank(bob);
+        try registry.createTokenSwapVaultSigned(
+            address(unlistedToken), alice, bob, 100, commitmentHash, amount, signature
+        ) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__TokenNotAccepted.selector);
+        }
+    }
+
+    function test_whitelistToken_Blacklist() public {
+        vm.prank(bob);
+        registry.whitelistToken(address(token1), false);
+
+        assertFalse(registry.s_whitelistedTokens(address(token1)));
+
+        vm.prank(bob);
+        try registry.getTokenVaultAddress(address(token1), bob, alice, 10, sha256("x"), 120) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__TokenNotAccepted.selector);
+        }
+    }
+
+    function test_withdraw_RevertInvalidCommitment() public {
+        bytes32 commitment = sha256("secret");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+
+        vm.prank(bob);
+        token1.transfer(vault, 120);
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, commitmentHash, 120);
+
+        vm.prank(alice);
+        vm.expectRevert(TokenDepositVault.TokenDepositVault__InvalidCommitment.selector);
+        TokenDepositVault(vault).withdraw(abi.encode("wrong-preimage"));
+    }
+
+    function test_createTokenSwapVaultSigned_RevertWhenInsufficientFundsAfterTransfer() public {
+        // Fee-on-transfer token: transfer 100, vault gets 90. Registry requires balance >= 100.
+        vm.prank(bob);
+        feeToken.transfer(alice, 200);
+        vm.prank(alice);
+        feeToken.approve(address(registry), 100);
+
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 100;
+        bytes memory signature;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(registry.CREATE_VAULT_TYPEHASH(), address(feeToken), alice, bob, 100, commitmentHash, amount)
+            );
+            (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+                registry.eip712Domain();
+            bytes32 domainSeparator = keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            );
+            bytes32 digest = MessageHashUtils.toTypedDataHash(domainSeparator, structHash);
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, digest);
+            signature = abi.encodePacked(r, s, v);
+        }
+
+        vm.prank(bob);
+        try registry.createTokenSwapVaultSigned(address(feeToken), alice, bob, 100, commitmentHash, amount, signature) {
+            assert(false);
+        } catch (bytes memory e) {
+            assert(bytes32(e) == SwapRegistry.SwapRegistry__InsufficientFundsDeposited.selector);
+        }
+    }
+
+    function test_createTokenSwapVault_ReturnsCorrectAddress() public {
+        bytes32 commitmentHash = sha256("x");
+        address predicted = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        vm.prank(bob);
+        token1.transfer(predicted, 120);
+        address returned = registry.createTokenSwapVault(address(token1), bob, alice, 10, commitmentHash, 120);
+        assertEq(returned, predicted);
+    }
+
+    function test_createTokenSwapVaultNativeCall_ReturnsCorrectAddress() public {
+        vm.startPrank(bob);
+        registry.whitelistToken(registry.NATIVE_TOKEN(), true);
+        vm.stopPrank();
+        bytes32 commitmentHash = sha256("x");
+        uint256 amount = 1 ether;
+        address predicted =
+            registry.getTokenVaultAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount);
+        vm.deal(alice, amount);
+        vm.prank(alice);
+        address returned = registry.createTokenSwapVaultNativeCall{value: amount}(
+            registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount
+        );
+        assertEq(returned, predicted);
+    }
+
+    function test_getTokenVaultAddress_ReturnsWhenNotDeployed() public view {
+        address predicted = registry.getTokenVaultAddress(address(token1), bob, alice, 10, sha256("x"), 120);
+        assertTrue(predicted != address(0));
+        assertFalse(registry.s_deployedVaults(predicted));
+    }
+
+    function test_Constants() public view {
+        assertEq(
+            registry.CREATE_VAULT_TYPEHASH(),
+            keccak256(
+                "CreateVaultParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount)"
+            )
+        );
+        assertEq(registry.NATIVE_TOKEN(), 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
     }
 }

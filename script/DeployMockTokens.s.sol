@@ -25,7 +25,7 @@ contract USDC is ERC20 {
         _mint(_owner, 100_000_000_000 * (10 ** decimals()));
     }
 
-    function minttoken(address to, uint256 amount) external {
+    function mintToken(address to, uint256 amount) external {
         _mint(to, amount);
     }
 
@@ -39,7 +39,7 @@ contract WBTC is ERC20 {
         _mint(_owner, 21_000_000 * (10 ** decimals()));
     }
 
-    function minttoken(address to, uint256 amount) external {
+    function mintToken(address to, uint256 amount) external {
         _mint(to, amount);
     }
 

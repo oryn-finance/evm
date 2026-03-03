@@ -27,6 +27,11 @@ All notable changes to the EVM Atomic Swap Escrow contracts are documented in th
 - **Function naming** — Renamed `_createERC20VaultFromCreator` → `_createErc20VaultFromCreator` for consistent casing
 - **`CREATE_VAULT_TYPEHASH` updated** — Now includes `uint256 nonce` field
 - **`whitelistToken(address, bool)` split** — Replaced with `whitelistToken(address)` and `delistToken(address)` for explicit intent
+- **`NATIVE_TOKEN` constant in `TokenDepositVault`** — Extracted hard-coded sentinel address into a named constant, eliminating duplication with `SwapRegistry`
+- **Variable naming** — Fixed `expiryblocks` → `expiryBlocks` in `TokenDepositVault.cancelSwap()` for consistent camelCase
+- **Error selector comments** — Added missing `// 0x...` hex selectors for `SwapRegistry__InvalidCommitmentHash`, `SwapRegistry__EmptyBatch`, and `TokenDepositVault__VaultAlreadySettled`
+- **Test naming standardised** — All test functions now follow `test_<subject>_<Behavior>` pattern with consistent `Reverts` verb; fixed typos (`witdraw`, `depositinto`, `WIthOut`, `timelock`)
+- **`minttoken()` → `mintToken()`** — Fixed camelCase in `DeployMockTokens.s.sol` mock token contracts
 - **`foundry.toml` cleaned up** — Removed commented-out settings
 
 ### Tests

@@ -59,7 +59,9 @@ contract SwapRegistry is Ownable, Pausable, EIP712 {
     error SwapRegistry__InvalidSignature();
     // 0xed772378
     error SwapRegistry__PermitFailed();
+    // 0xddce1499
     error SwapRegistry__InvalidCommitmentHash();
+    // 0x9236c60b
     error SwapRegistry__EmptyBatch();
 
     //////////////////////////////////

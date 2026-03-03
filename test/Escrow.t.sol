@@ -225,7 +225,7 @@ contract RegistryAndVaultTest is Test {
 
     // ========== createTokenSwapVault (pre-fund flow) ==========
 
-    function test_getVaultAddressButFundWrongAsset() public {
+    function test_createTokenSwapVault_RevertsWhenFundedWithWrongAsset() public {
         bytes32 h = sha256(abi.encode(0x1232));
         address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h, 120);
 
@@ -239,7 +239,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVault(address(token2), bob, alice, 10, h, 120);
     }
 
-    function test_depositintoCorrectVault() public {
+    function test_depositIntoCorrectVault() public {
         bytes32 h = sha256(abi.encode(0x1232));
         address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h, 120);
 
@@ -274,7 +274,7 @@ contract RegistryAndVaultTest is Test {
 
     // ========== Withdraw (ERC20) ==========
 
-    function test_withdrawVault() public {
+    function test_withdraw_Success() public {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
@@ -293,7 +293,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(token1.balanceOf(alice), 120);
     }
 
-    function test_withdraw_RevertInvalidCommitment() public {
+    function test_withdraw_RevertsOnInvalidCommitment() public {
         bytes32 commitment = sha256("secret");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
         address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
@@ -307,7 +307,7 @@ contract RegistryAndVaultTest is Test {
         TokenDepositVault(vault).withdraw(abi.encode("wrong-preimage"));
     }
 
-    function test_witdrawShouldFailIfInCorrectCommitment() public {
+    function test_withdraw_RevertsOnIncorrectCommitmentNativeETH() public {
         vm.startPrank(bob);
         registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
@@ -331,7 +331,7 @@ contract RegistryAndVaultTest is Test {
 
     // ========== Cancel (ERC20) ==========
 
-    function test_CancelBeforetimelockNotAllowed() public {
+    function test_cancelSwap_RevertsBeforeExpiry() public {
         bytes32 h = sha256(abi.encode(0x1232));
         address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h, 120);
 
@@ -355,7 +355,7 @@ contract RegistryAndVaultTest is Test {
 
     // ========== Native ETH (pre-fund flow) ==========
 
-    function test_depositNativeETH() public {
+    function test_createTokenSwapVault_NativeETHWithdrawWorks() public {
         vm.startPrank(bob);
         registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
@@ -381,7 +381,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(bob.balance, 1000);
     }
 
-    function test_cancelNativeEscrow() public {
+    function test_createTokenSwapVault_NativeETHCancelWorks() public {
         vm.startPrank(bob);
         registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
@@ -409,7 +409,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(alice.balance, 1000);
     }
 
-    function test_shouldntAllowSameAddressVault() public {
+    function test_createTokenSwapVault_RevertsOnDuplicateVault() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -434,7 +434,7 @@ contract RegistryAndVaultTest is Test {
         registry.getTokenVaultAddress(nativeToken, alice, bob, 100, commitmentHash, 1000);
     }
 
-    function test_withdrawAndRefundWillFailIfTheyAreContractWIthOutReceiveOrFallBack() public {
+    function test_nativeETH_RevertsWhenRecipientHasNoReceive() public {
         vm.startPrank(bob);
         registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
@@ -466,7 +466,7 @@ contract RegistryAndVaultTest is Test {
         TokenDepositVault(predictedAddr).cancelSwap();
     }
 
-    function test_NativeVaultWontBeCreatedWithOutBalance() public {
+    function test_createTokenSwapVault_RevertsOnUnfundedNativeVault() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -569,7 +569,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(returned, predicted);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenTokenNotNative() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenTokenNotNative() public {
         vm.startPrank(bob);
         registry.whitelistToken(registry.NATIVE_TOKEN());
         vm.stopPrank();
@@ -581,7 +581,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: 1 ether}(address(token1), alice, bob, 100, h, 1 ether);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenMsgValueMismatch() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenMsgValueMismatch() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -594,7 +594,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: 500}(nativeToken, alice, bob, 100, h, 1 ether);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenNativeNotWhitelisted() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenNativeNotWhitelisted() public {
         address nativeToken = registry.NATIVE_TOKEN();
         bytes32 h = sha256("x");
         vm.deal(alice, 1 ether);
@@ -603,7 +603,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: 1 ether}(nativeToken, alice, bob, 100, h, 1 ether);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenVaultAlreadyDeployed() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenVaultAlreadyDeployed() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -621,7 +621,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenNativeDepositFailed() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenNativeDepositFailed() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -640,7 +640,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenCreatorZero() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenCreatorZero() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -653,7 +653,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: 1 ether}(nativeToken, address(0), bob, 100, h, 1 ether);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenRecipientZero() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenRecipientZero() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -666,7 +666,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: 1 ether}(nativeToken, alice, address(0), 100, h, 1 ether);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenCreatorEqualsRecipient() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenCreatorEqualsRecipient() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -679,7 +679,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: 1 ether}(nativeToken, alice, alice, 100, h, 1 ether);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenZeroExpiryBlocks() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenZeroExpiryBlocks() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -692,7 +692,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultNativeCall{value: 1 ether}(nativeToken, alice, bob, 0, h, 1 ether);
     }
 
-    function test_createTokenSwapVaultNativeCall_RevertWhenZeroAmount() public {
+    function test_createTokenSwapVaultNativeCall_RevertsWhenZeroAmount() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -755,7 +755,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(permitToken.balanceOf(alice), 100_000_000 * 10 ** 18 - amount);
     }
 
-    function test_createTokenSwapVaultPermit_RevertWhenNativeToken() public {
+    function test_createTokenSwapVaultPermit_RevertsWhenNativeToken() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -769,7 +769,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultPermit(nativeToken, alice, bob, 100, h, 100, dl, sig);
     }
 
-    function test_createTokenSwapVaultPermit_RevertWhenPermitExpired() public {
+    function test_createTokenSwapVaultPermit_RevertsWhenPermitExpired() public {
         bytes32 h = sha256("x");
         uint256 amount = 100;
         uint256 deadline = block.timestamp - 1;
@@ -780,7 +780,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultPermit(address(permitToken), alice, bob, 100, h, amount, deadline, signature);
     }
 
-    function test_createTokenSwapVaultPermit_RevertWhenPermitFailsNonPermitToken() public {
+    function test_createTokenSwapVaultPermit_RevertsWhenPermitFailsNonPermitToken() public {
         bytes32 h = sha256("x");
         uint256 amount = 100;
         uint256 deadline = block.timestamp + 3600;
@@ -795,7 +795,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultPermit(address(token1), alice, bob, 100, h, amount, deadline, sig);
     }
 
-    function test_createTokenSwapVaultPermit_RevertWhenTokenNotWhitelisted() public {
+    function test_createTokenSwapVaultPermit_RevertsWhenTokenNotWhitelisted() public {
         vm.prank(bob);
         ERC20Impl unlistedToken = new ERC20Impl("Unlisted", "UL", alice);
         vm.prank(alice);
@@ -885,7 +885,7 @@ contract RegistryAndVaultTest is Test {
         assertEq(registry.s_nonces(alice), 1);
     }
 
-    function test_createTokenSwapVaultSigned_RevertWhenInvalidSignature() public {
+    function test_createTokenSwapVaultSigned_RevertsWhenInvalidSignature() public {
         bytes32 commitmentHash = sha256("x");
         uint256 amount = 100;
 
@@ -900,7 +900,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
     }
 
-    function test_createTokenSwapVaultSigned_RevertWhenNativeToken() public {
+    function test_createTokenSwapVaultSigned_RevertsWhenNativeToken() public {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -913,7 +913,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultSigned(nativeToken, alice, bob, 100, h, 100, sig);
     }
 
-    function test_createTokenSwapVaultSigned_RevertWhenVaultAlreadyDeployed() public {
+    function test_createTokenSwapVaultSigned_RevertsWhenVaultAlreadyDeployed() public {
         bytes32 commitmentHash = sha256(abi.encodePacked("signed-secret"));
         uint256 amount = 300;
 
@@ -936,7 +936,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature2);
     }
 
-    function test_createTokenSwapVaultSigned_RevertWhenTokenNotWhitelisted() public {
+    function test_createTokenSwapVaultSigned_RevertsWhenTokenNotWhitelisted() public {
         vm.prank(bob);
         ERC20Impl unlistedToken = new ERC20Impl("Unlisted", "UL", alice);
         vm.prank(alice);
@@ -953,7 +953,7 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultSigned(address(unlistedToken), alice, bob, 100, commitmentHash, amount, signature);
     }
 
-    function test_createTokenSwapVaultSigned_RevertWhenInsufficientFundsAfterTransfer() public {
+    function test_createTokenSwapVaultSigned_RevertsWhenInsufficientFundsAfterTransfer() public {
         vm.prank(bob);
         assertTrue(feeToken.transfer(alice, 200));
         vm.prank(alice);
@@ -1203,7 +1203,7 @@ contract RegistryAndVaultTest is Test {
 
     // ========== Signature replay with old nonce ==========
 
-    function test_createTokenSwapVaultSigned_RevertOnReplayWithOldNonce() public {
+    function test_createTokenSwapVaultSigned_RevertsOnReplayWithOldNonce() public {
         bytes32 commitmentHash = sha256(abi.encodePacked("replay-test"));
         uint256 amount = 200;
 

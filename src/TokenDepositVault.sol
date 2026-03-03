@@ -32,7 +32,17 @@ contract TokenDepositVault is Initializable {
     error TokenDepositVault__SwapNotExpired();
     // 0xe587eaf5
     error TokenDepositVault__NativeWithdrawFailed();
+    // 0xc9d92dfc
     error TokenDepositVault__VaultAlreadySettled();
+
+    //////////////////////////////////
+    //////////////////////////////////
+    /////// Constants ////////////////
+    //////////////////////////////////
+    //////////////////////////////////
+
+    /// @notice Sentinel address representing native ETH
+    address public constant NATIVE_TOKEN = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     //////////////////////////////////
     //////////////////////////////////
@@ -101,7 +111,7 @@ contract TokenDepositVault is Initializable {
 
         s_settled = true;
 
-        if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
+        if (token == NATIVE_TOKEN) {
             (bool success,) = recipient.call{value: address(this).balance, gas: 30000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {
@@ -117,13 +127,13 @@ contract TokenDepositVault is Initializable {
     function cancelSwap() external {
         require(!s_settled, TokenDepositVault__VaultAlreadySettled());
 
-        (address token, address creator,, uint256 expiryblocks, bytes32 commitmentHash) = getSwapParameters();
+        (address token, address creator,, uint256 expiryBlocks, bytes32 commitmentHash) = getSwapParameters();
 
-        require(block.number > s_depositedAt + expiryblocks, TokenDepositVault__SwapNotExpired());
+        require(block.number > s_depositedAt + expiryBlocks, TokenDepositVault__SwapNotExpired());
 
         s_settled = true;
 
-        if (token == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
+        if (token == NATIVE_TOKEN) {
             (bool success,) = creator.call{value: address(this).balance, gas: 30000}("");
             require(success, TokenDepositVault__NativeWithdrawFailed());
         } else {

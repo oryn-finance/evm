@@ -45,7 +45,7 @@ contract ERC20FeeOnTransfer is ERC20 {
 }
 
 contract RegistryAndVaultTest is Test {
-    event TokenVaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
+    event VaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
 
     SwapRegistry registry;
     ERC20Impl token1;
@@ -638,7 +638,7 @@ contract RegistryAndVaultTest is Test {
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit TokenVaultCreated(predicted, alice, nativeToken);
+        emit VaultCreated(predicted, alice, nativeToken);
         registry.createTokenSwapVaultNativeCall{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
     }
 

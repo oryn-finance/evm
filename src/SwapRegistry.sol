@@ -40,8 +40,6 @@ contract SwapRegistry is Ownable, EIP712 {
     error SwapRegistry__ZeroExpiryBlocks();
     // 0x7510a9d5
     error SwapRegistry__ZeroAmount();
-    // 0x2441e34b
-    error SwapRegistry__InvalidAddress();
     // 0x65db15b5
     error SwapRegistry__InsufficientFundsDeposited();
     // 0xcd1f0e00
@@ -71,12 +69,7 @@ contract SwapRegistry is Ownable, EIP712 {
     /// @param vaultAddress Address of the newly created vault
     /// @param creator Address of the vault creator
     /// @param token Address of the ERC20 token for the vault
-    event TokenVaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
-
-    /// @notice Emitted when a new native ETH vault is created
-    /// @param vaultAddress Address of the newly created vault
-    /// @param creator Address of the vault creator
-    event NativeVaultCreated(address indexed vaultAddress, address indexed creator);
+    event VaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
 
     /// @notice Emitted when a token is whitelisted or blacklisted
     /// @param tokenAddress Address of the token
@@ -179,17 +172,13 @@ contract SwapRegistry is Ownable, EIP712 {
     ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
         require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
-        bytes memory encodedArgs = _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash);
-
-        bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash);
+        (bytes memory encodedArgs, bytes32 salt) =
+            _getVaultArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
 
         address addr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
-        {
-            require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
-        }
+        require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
 
-        // Verify the predicted address has been funded with the required tokens by the creator
         if (token == NATIVE_TOKEN) {
             require(address(addr).balance >= amount, SwapRegistry__InsufficientFundsDeposited());
         } else {
@@ -222,9 +211,8 @@ contract SwapRegistry is Ownable, EIP712 {
         require(msg.value == amount, SwapRegistry__MsgValueAmountMismatch());
         require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
-        bytes memory encodedArgs = _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash);
-
-        bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash);
+        (bytes memory encodedArgs, bytes32 salt) =
+            _getVaultArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
 
         address addr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
@@ -257,10 +245,8 @@ contract SwapRegistry is Ownable, EIP712 {
         uint256 deadline,
         bytes calldata signature
     ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
-        {
-            require(token != NATIVE_TOKEN, SwapRegistry__OnlyERC20Allowed());
-            require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
-        }
+        require(token != NATIVE_TOKEN, SwapRegistry__OnlyERC20Allowed());
+        require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
         _executePermit(token, creator, amount, deadline, signature);
 
@@ -320,8 +306,8 @@ contract SwapRegistry is Ownable, EIP712 {
         bytes32 commitmentHash,
         uint256 amount
     ) internal returns (address) {
-        bytes memory encodedArgs = _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash);
-        bytes32 salt = _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash);
+        (bytes memory encodedArgs, bytes32 salt) =
+            _getVaultArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
         address addr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
@@ -353,10 +339,10 @@ contract SwapRegistry is Ownable, EIP712 {
     ) external view safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
         require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
-        address predictedAddr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(
-            _getAbiEncodedTokenVaultArgs(token, creator, recipient, expiryBlocks, commitmentHash),
-            _getSaltForTokenVault(token, creator, recipient, expiryBlocks, commitmentHash)
-        );
+        (bytes memory encodedArgs, bytes32 salt) =
+            _getVaultArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
+        address predictedAddr =
+            i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedVaults[predictedAddr], SwapRegistry__VaultAlreadyDeployed());
 
@@ -373,7 +359,7 @@ contract SwapRegistry is Ownable, EIP712 {
     function _executePermit(address token, address creator, uint256 amount, uint256 deadline, bytes calldata signature)
         internal
     {
-        (uint8 v, bytes32 r, bytes32 s) = ECDSA.parse(signature);
+        (uint8 v, bytes32 r, bytes32 s) = ECDSA.parseCalldata(signature);
         try IERC20Permit(token).permit(creator, address(this), amount, deadline, v, r, s) {}
         catch {
             revert SwapRegistry__PermitFailed();
@@ -387,43 +373,26 @@ contract SwapRegistry is Ownable, EIP712 {
         address vault = i_tokenVaultImplementation.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
         vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
         (address token, address creator,,,) = abi.decode(encodedArgs, (address, address, address, uint256, bytes32));
-        emit TokenVaultCreated(vault, creator, token);
+        emit VaultCreated(vault, creator, token);
         s_deployedVaults[vault] = true;
     }
 
-    /// @notice Encodes vault initialization parameters for cloning
+    /// @notice Encodes vault params and generates deterministic deployment salt
     /// @param token Token address
     /// @param creator Creator address
     /// @param recipient Recipient address
     /// @param expiryBlocks Block expiry count
     /// @param commitmentHash Swap commitment hash
-    /// @return Encoded bytes for immutable arguments
-    /// @dev Used internally to prepare data for deterministic cloning
-    function _getAbiEncodedTokenVaultArgs(
+    /// @return encodedArgs ABI-encoded immutable arguments for cloning
+    /// @return salt Keccak256 hash of chain-scoped parameters for deterministic deployment
+    function _getVaultArgsAndSalt(
         address token,
         address creator,
         address recipient,
         uint256 expiryBlocks,
         bytes32 commitmentHash
-    ) internal pure returns (bytes memory) {
-        return abi.encode(token, creator, recipient, expiryBlocks, commitmentHash);
-    }
-
-    /// @notice Generates deterministic salt for vault deployment
-    /// @param token Token address
-    /// @param creator Creator address
-    /// @param recipient Recipient address
-    /// @param expiryBlocks Block expiry count
-    /// @param commitmentHash Swap commitment hash
-    /// @return Keccak256 hash of encoded parameters serving as the deployment salt
-    /// @dev Ensures same parameters always produce the same vault address
-    function _getSaltForTokenVault(
-        address token,
-        address creator,
-        address recipient,
-        uint256 expiryBlocks,
-        bytes32 commitmentHash
-    ) internal view returns (bytes32) {
-        return keccak256(abi.encode(block.chainid, token, creator, recipient, expiryBlocks, commitmentHash));
+    ) internal view returns (bytes memory encodedArgs, bytes32 salt) {
+        encodedArgs = abi.encode(token, creator, recipient, expiryBlocks, commitmentHash);
+        salt = keccak256(abi.encode(block.chainid, token, creator, recipient, expiryBlocks, commitmentHash));
     }
 }

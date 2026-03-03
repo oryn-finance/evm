@@ -45,7 +45,15 @@ contract ERC20FeeOnTransfer is ERC20 {
 }
 
 contract RegistryAndVaultTest is Test {
-    event VaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
+    event VaultCreated(
+        address indexed vaultAddress,
+        address indexed creator,
+        address indexed token,
+        address recipient,
+        bytes32 commitmentHash,
+        uint256 expiryBlocks,
+        uint256 amount
+    );
 
     SwapRegistry registry;
     ERC20Impl token1;
@@ -707,7 +715,7 @@ contract RegistryAndVaultTest is Test {
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit VaultCreated(predicted, alice, nativeToken);
+        emit VaultCreated(predicted, alice, nativeToken, bob, commitmentHash, 100, amount);
         registry.createTokenSwapVaultNativeCall{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
     }
 
@@ -1339,5 +1347,163 @@ contract RegistryAndVaultTest is Test {
 
         vm.expectRevert(TokenDepositVault.TokenDepositVault__InvalidCommitment.selector);
         TokenDepositVault(vault).withdraw(wrongPreimage);
+    }
+
+    // ========== Pausable ==========
+
+    function test_pause_RevertsWhenNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.pause();
+    }
+
+    function test_unpause_RevertsWhenNotOwner() public {
+        vm.prank(bob);
+        registry.pause();
+
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.unpause();
+    }
+
+    function test_pause_BlocksCreateTokenSwapVault() public {
+        vm.prank(bob);
+        registry.pause();
+
+        bytes32 h = sha256("x");
+        vm.expectRevert();
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, h, 120);
+    }
+
+    function test_pause_BlocksCreateTokenSwapVaultNativeCall() public {
+        address nativeToken = registry.NATIVE_TOKEN();
+        vm.startPrank(bob);
+        registry.whitelistToken(nativeToken, true);
+        registry.pause();
+        vm.stopPrank();
+
+        bytes32 h = sha256("x");
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert();
+        registry.createTokenSwapVaultNativeCall{value: 1 ether}(nativeToken, alice, bob, 100, h, 1 ether);
+    }
+
+    function test_pause_BlocksCreateTokenSwapVaultPermit() public {
+        vm.prank(bob);
+        registry.pause();
+
+        bytes32 h = sha256("x");
+        bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+        uint256 dl = block.timestamp + 3600;
+
+        vm.expectRevert();
+        registry.createTokenSwapVaultPermit(address(permitToken), alice, bob, 100, h, 100, dl, sig);
+    }
+
+    function test_pause_BlocksCreateTokenSwapVaultSigned() public {
+        vm.prank(bob);
+        registry.pause();
+
+        bytes32 h = sha256("x");
+        bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+
+        vm.expectRevert();
+        registry.createTokenSwapVaultSigned(address(permitToken), alice, bob, 100, h, 100, sig);
+    }
+
+    function test_unpause_AllowsVaultCreation() public {
+        vm.startPrank(bob);
+        registry.pause();
+        registry.unpause();
+        vm.stopPrank();
+
+        bytes32 h = sha256("x");
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h, 120);
+        vm.prank(bob);
+        assertTrue(token1.transfer(vault, 120));
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, h, 120);
+        assertTrue(registry.s_deployedVaults(vault));
+    }
+
+    function test_pause_DoesNotBlockWithdraw() public {
+        bytes32 commitment = sha256("hello");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        vm.prank(bob);
+        assertTrue(token1.transfer(vault, 120));
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, commitmentHash, 120);
+
+        vm.prank(bob);
+        registry.pause();
+
+        TokenDepositVault(vault).withdraw(abi.encode(commitment));
+        assertEq(token1.balanceOf(alice), 120);
+    }
+
+    function test_pause_DoesNotBlockCancel() public {
+        bytes32 h = sha256(abi.encode(0x1232));
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h, 120);
+
+        vm.prank(bob);
+        assertTrue(token1.transfer(vault, 120));
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, h, 120);
+
+        vm.prank(bob);
+        registry.pause();
+
+        vm.roll(12);
+        TokenDepositVault(vault).cancelSwap();
+        assertEq(token1.balanceOf(bob), 100_000_000 * 10 ** 18);
+    }
+
+    // ========== incrementNonce ==========
+
+    function test_incrementNonce_BumpsNonce() public {
+        assertEq(registry.s_nonces(alice), 0);
+
+        vm.prank(alice);
+        registry.incrementNonce();
+        assertEq(registry.s_nonces(alice), 1);
+
+        vm.prank(alice);
+        registry.incrementNonce();
+        assertEq(registry.s_nonces(alice), 2);
+    }
+
+    function test_incrementNonce_InvalidatesPendingSignature() public {
+        bytes32 commitmentHash = sha256(abi.encodePacked("nonce-cancel"));
+        uint256 amount = 300;
+
+        // Sign with nonce 0
+        bytes memory signature =
+            _signCreateVault(ALICE_PK, address(permitToken), alice, bob, 100, commitmentHash, amount, 0);
+
+        vm.prank(alice);
+        assertTrue(permitToken.approve(address(registry), amount));
+
+        // Creator bumps nonce to invalidate the signature
+        vm.prank(alice);
+        registry.incrementNonce();
+        assertEq(registry.s_nonces(alice), 1);
+
+        // Now the signature (signed with nonce 0) should fail since contract expects nonce 1
+        vm.expectRevert(SwapRegistry.SwapRegistry__InvalidSignature.selector);
+        registry.createTokenSwapVaultSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
+    }
+
+    // ========== Richer VaultCreated event ==========
+
+    function test_createTokenSwapVault_EmitsRichVaultCreatedEvent() public {
+        bytes32 h = sha256("x");
+        uint256 amount = 120;
+        address vault = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h, amount);
+        vm.prank(bob);
+        assertTrue(token1.transfer(vault, amount));
+
+        vm.expectEmit(true, true, true, true);
+        emit VaultCreated(vault, bob, address(token1), alice, h, 10, amount);
+        registry.createTokenSwapVault(address(token1), bob, alice, 10, h, amount);
     }
 }

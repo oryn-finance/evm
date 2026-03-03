@@ -15,6 +15,7 @@ import {TokenDepositVault} from "./TokenDepositVault.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -24,7 +25,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 /// @author Oryn Finance
 /// @title SwapRegistry
 /// @notice Factory for creating deterministic token deposit vaults that allow seamless atomic swaps
-contract SwapRegistry is Ownable, EIP712 {
+contract SwapRegistry is Ownable, Pausable, EIP712 {
     using Clones for address;
     using Address for address;
     using SafeERC20 for IERC20;
@@ -105,7 +106,19 @@ contract SwapRegistry is Ownable, EIP712 {
     /// @param vaultAddress Address of the newly created vault
     /// @param creator Address of the vault creator
     /// @param token Address of the ERC20 token for the vault
-    event VaultCreated(address indexed vaultAddress, address indexed creator, address indexed token);
+    /// @param recipient Address that can withdraw by revealing commitment
+    /// @param commitmentHash Hash that must be revealed to withdraw
+    /// @param expiryBlocks Number of blocks until the vault expires
+    /// @param amount Token amount deposited into the vault
+    event VaultCreated(
+        address indexed vaultAddress,
+        address indexed creator,
+        address indexed token,
+        address recipient,
+        bytes32 commitmentHash,
+        uint256 expiryBlocks,
+        uint256 amount
+    );
 
     /// @notice Emitted when a token is whitelisted or blacklisted
     /// @param tokenAddress Address of the token
@@ -152,6 +165,24 @@ contract SwapRegistry is Ownable, EIP712 {
     //////////////////////////////////
     //////////////////////////////////
 
+    /// @notice Pauses all vault creation operations
+    /// @dev Only callable by contract owner. Does not affect existing vault withdraw/cancel.
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Unpauses vault creation operations
+    /// @dev Only callable by contract owner
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    /// @notice Increments the caller's nonce, invalidating all pending EIP-712 signatures
+    /// @dev Useful for creators who want to cancel outstanding signed vault authorizations
+    function incrementNonce() external {
+        s_nonces[msg.sender]++;
+    }
+
     /// @notice Whitelists or blacklists an ERC20 token for swap usage
     /// @param _tokenAddress The ERC20 token contract address to modify
     /// @param _status True to whitelist, false to blacklist the token
@@ -178,7 +209,7 @@ contract SwapRegistry is Ownable, EIP712 {
         uint256 expiryBlocks,
         bytes32 commitmentHash,
         uint256 amount
-    ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
         require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
         (bytes memory encodedArgs, bytes32 salt) =
@@ -194,7 +225,7 @@ contract SwapRegistry is Ownable, EIP712 {
             require(IERC20(token).balanceOf(addr) >= amount, SwapRegistry__InsufficientFundsDeposited());
         }
 
-        _deployVault(encodedArgs, salt);
+        _deployVault(encodedArgs, salt, amount);
         return addr;
     }
 
@@ -215,7 +246,7 @@ contract SwapRegistry is Ownable, EIP712 {
         uint256 expiryBlocks,
         bytes32 commitmentHash,
         uint256 amount
-    ) external payable safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external payable whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
         require(token == NATIVE_TOKEN, SwapRegistry__OnlyNativeTokenAllowed());
         require(msg.value == amount, SwapRegistry__MsgValueAmountMismatch());
         require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
@@ -231,7 +262,7 @@ contract SwapRegistry is Ownable, EIP712 {
             require(success, SwapRegistry__NativeDepositFailed());
         }
 
-        _deployVault(encodedArgs, salt);
+        _deployVault(encodedArgs, salt, amount);
         return addr;
     }
 
@@ -253,7 +284,7 @@ contract SwapRegistry is Ownable, EIP712 {
         uint256 amount,
         uint256 deadline,
         bytes calldata signature
-    ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
         require(token != NATIVE_TOKEN, SwapRegistry__OnlyERC20Allowed());
         require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
@@ -280,7 +311,7 @@ contract SwapRegistry is Ownable, EIP712 {
         bytes32 commitmentHash,
         uint256 amount,
         bytes calldata signature
-    ) external safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
         require(token != NATIVE_TOKEN, SwapRegistry__OnlyERC20Allowed());
         require(s_whitelistedTokens[token], SwapRegistry__TokenNotAccepted());
 
@@ -361,7 +392,7 @@ contract SwapRegistry is Ownable, EIP712 {
         IERC20(token).safeTransferFrom(creator, addr, amount);
         require(IERC20(token).balanceOf(addr) >= amount, SwapRegistry__InsufficientFundsDeposited());
 
-        _deployVault(encodedArgs, salt);
+        _deployVault(encodedArgs, salt, amount);
         return addr;
     }
 
@@ -379,11 +410,13 @@ contract SwapRegistry is Ownable, EIP712 {
     /// @notice Deploys vault clone, initializes it, and marks as deployed
     /// @param encodedArgs ABI-encoded vault params (token, creator, recipient, expiryBlocks, commitmentHash)
     /// @param salt Deterministic deployment salt
-    function _deployVault(bytes memory encodedArgs, bytes32 salt) internal {
+    /// @param amount Token amount deposited into the vault
+    function _deployVault(bytes memory encodedArgs, bytes32 salt, uint256 amount) internal {
         address vault = i_tokenVaultImplementation.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
         vault.functionCall(abi.encodeCall(TokenDepositVault.initialize, ()));
-        (address token, address creator,,,) = abi.decode(encodedArgs, (address, address, address, uint256, bytes32));
-        emit VaultCreated(vault, creator, token);
+        (address token, address creator, address recipient, uint256 expiryBlocks, bytes32 commitmentHash) =
+            abi.decode(encodedArgs, (address, address, address, uint256, bytes32));
+        emit VaultCreated(vault, creator, token, recipient, commitmentHash, expiryBlocks, amount);
         s_deployedVaults[vault] = true;
     }
 

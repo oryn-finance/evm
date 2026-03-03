@@ -1493,6 +1493,163 @@ contract RegistryAndVaultTest is Test {
         registry.createTokenSwapVaultSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
     }
 
+    // ========== Batch vault creation ==========
+
+    function test_createTokenSwapVaultBatch_Success() public {
+        bytes32 h1 = sha256("batch-1");
+        bytes32 h2 = sha256("batch-2");
+        uint256 amount = 500;
+
+        // Predict addresses
+        address v1 = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h1, amount);
+        address v2 = registry.getTokenVaultAddress(address(token1), bob, charlie, 20, h2, amount);
+
+        // Pre-fund both vaults
+        vm.startPrank(bob);
+        assertTrue(token1.transfer(v1, amount));
+        assertTrue(token1.transfer(v2, amount));
+        vm.stopPrank();
+
+        // Build batch params
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](2);
+        params[0] = SwapRegistry.VaultParams(address(token1), bob, alice, 10, h1, amount);
+        params[1] = SwapRegistry.VaultParams(address(token1), bob, charlie, 20, h2, amount);
+
+        address[] memory vaults = registry.createTokenSwapVaultBatch(params);
+
+        assertEq(vaults.length, 2);
+        assertEq(vaults[0], v1);
+        assertEq(vaults[1], v2);
+        assertTrue(registry.s_deployedVaults(v1));
+        assertTrue(registry.s_deployedVaults(v2));
+        assertEq(token1.balanceOf(v1), amount);
+        assertEq(token1.balanceOf(v2), amount);
+    }
+
+    function test_createTokenSwapVaultBatch_RevertsOnEmptyArray() public {
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](0);
+
+        vm.expectRevert(SwapRegistry.SwapRegistry__EmptyBatch.selector);
+        registry.createTokenSwapVaultBatch(params);
+    }
+
+    function test_createTokenSwapVaultBatch_RevertsIfAnyVaultFails() public {
+        bytes32 h1 = sha256("batch-ok");
+        bytes32 h2 = sha256("batch-fail");
+        uint256 amount = 500;
+
+        // Only fund the first vault, not the second
+        address v1 = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h1, amount);
+        vm.prank(bob);
+        assertTrue(token1.transfer(v1, amount));
+
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](2);
+        params[0] = SwapRegistry.VaultParams(address(token1), bob, alice, 10, h1, amount);
+        params[1] = SwapRegistry.VaultParams(address(token1), bob, charlie, 20, h2, amount);
+
+        vm.expectRevert(SwapRegistry.SwapRegistry__InsufficientFundsDeposited.selector);
+        registry.createTokenSwapVaultBatch(params);
+
+        // First vault should NOT be deployed since entire tx reverted
+        assertFalse(registry.s_deployedVaults(v1));
+    }
+
+    function test_createTokenSwapVaultBatch_RevertsWhenPaused() public {
+        vm.prank(bob);
+        registry.pause();
+
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](1);
+        params[0] = SwapRegistry.VaultParams(address(token1), bob, alice, 10, sha256("x"), 100);
+
+        vm.expectRevert();
+        registry.createTokenSwapVaultBatch(params);
+    }
+
+    function test_createTokenSwapVaultBatch_WithdrawFromBatchVault() public {
+        bytes32 commitment = sha256("batch-secret");
+        bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
+        uint256 amount = 1000;
+
+        address v1 = registry.getTokenVaultAddress(address(token1), bob, alice, 10, commitmentHash, amount);
+        vm.prank(bob);
+        assertTrue(token1.transfer(v1, amount));
+
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](1);
+        params[0] = SwapRegistry.VaultParams(address(token1), bob, alice, 10, commitmentHash, amount);
+
+        address[] memory vaults = registry.createTokenSwapVaultBatch(params);
+
+        TokenDepositVault(vaults[0]).withdraw(abi.encode(commitment));
+        assertEq(token1.balanceOf(alice), amount);
+    }
+
+    function test_createTokenSwapVaultBatch_NativeETH() public {
+        address nativeToken = registry.NATIVE_TOKEN();
+        vm.startPrank(bob);
+        registry.whitelistToken(nativeToken, true);
+        vm.stopPrank();
+
+        bytes32 h1 = sha256("batch-native-1");
+        bytes32 h2 = sha256("batch-native-2");
+        uint256 amount = 1 ether;
+
+        address v1 = registry.getTokenVaultAddress(nativeToken, alice, bob, 10, h1, amount);
+        address v2 = registry.getTokenVaultAddress(nativeToken, alice, charlie, 20, h2, amount);
+
+        // Pre-fund both predicted addresses with ETH
+        vm.deal(alice, amount * 2);
+        vm.startPrank(alice);
+        (bool s1,) = payable(v1).call{value: amount}("");
+        assertTrue(s1);
+        (bool s2,) = payable(v2).call{value: amount}("");
+        assertTrue(s2);
+        vm.stopPrank();
+
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](2);
+        params[0] = SwapRegistry.VaultParams(nativeToken, alice, bob, 10, h1, amount);
+        params[1] = SwapRegistry.VaultParams(nativeToken, alice, charlie, 20, h2, amount);
+
+        address[] memory vaults = registry.createTokenSwapVaultBatch(params);
+
+        assertEq(vaults[0], v1);
+        assertEq(vaults[1], v2);
+        assertEq(v1.balance, amount);
+        assertEq(v2.balance, amount);
+    }
+
+    function test_createTokenSwapVaultBatch_EmitsEventsForEachVault() public {
+        bytes32 h1 = sha256("batch-event-1");
+        bytes32 h2 = sha256("batch-event-2");
+        uint256 amount = 200;
+
+        address v1 = registry.getTokenVaultAddress(address(token1), bob, alice, 10, h1, amount);
+        address v2 = registry.getTokenVaultAddress(address(token1), bob, charlie, 20, h2, amount);
+
+        vm.startPrank(bob);
+        assertTrue(token1.transfer(v1, amount));
+        assertTrue(token1.transfer(v2, amount));
+        vm.stopPrank();
+
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](2);
+        params[0] = SwapRegistry.VaultParams(address(token1), bob, alice, 10, h1, amount);
+        params[1] = SwapRegistry.VaultParams(address(token1), bob, charlie, 20, h2, amount);
+
+        vm.expectEmit(true, true, true, true);
+        emit VaultCreated(v1, bob, address(token1), alice, h1, 10, amount);
+        vm.expectEmit(true, true, true, true);
+        emit VaultCreated(v2, bob, address(token1), charlie, h2, 20, amount);
+        registry.createTokenSwapVaultBatch(params);
+    }
+
+    function test_createTokenSwapVaultBatch_RevertsOnInvalidParams() public {
+        SwapRegistry.VaultParams[] memory params = new SwapRegistry.VaultParams[](1);
+        // creator == recipient
+        params[0] = SwapRegistry.VaultParams(address(token1), bob, bob, 10, sha256("x"), 100);
+
+        vm.expectRevert(SwapRegistry.SwapRegistry__InvalidAddressParameters.selector);
+        registry.createTokenSwapVaultBatch(params);
+    }
+
     // ========== Richer VaultCreated event ==========
 
     function test_createTokenSwapVault_EmitsRichVaultCreatedEvent() public {

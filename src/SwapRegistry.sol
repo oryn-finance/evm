@@ -60,6 +60,23 @@ contract SwapRegistry is Ownable, Pausable, EIP712 {
     // 0xed772378
     error SwapRegistry__PermitFailed();
     error SwapRegistry__InvalidCommitmentHash();
+    error SwapRegistry__EmptyBatch();
+
+    //////////////////////////////////
+    //////////////////////////////////
+    /////// Structs //////////////////
+    //////////////////////////////////
+    //////////////////////////////////
+
+    /// @notice Parameters for a single vault in a batch creation call
+    struct VaultParams {
+        address token;
+        address creator;
+        address recipient;
+        uint256 expiryBlocks;
+        bytes32 commitmentHash;
+        uint256 amount;
+    }
 
     //////////////////////////////////
     //////////////////////////////////
@@ -227,6 +244,45 @@ contract SwapRegistry is Ownable, Pausable, EIP712 {
 
         _deployVault(encodedArgs, salt, amount);
         return addr;
+    }
+
+    /// @notice Creates multiple pre-funded vaults in a single transaction
+    /// @param params Array of VaultParams structs, one per vault
+    /// @return vaults Array of deployed vault addresses
+    /// @dev Each vault must be pre-funded at its predicted address before calling
+    /// @dev Reverts entirely if any single vault in the batch fails
+    function createTokenSwapVaultBatch(VaultParams[] calldata params)
+        external
+        whenNotPaused
+        returns (address[] memory vaults)
+    {
+        uint256 length = params.length;
+        require(length > 0, SwapRegistry__EmptyBatch());
+
+        vaults = new address[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            VaultParams calldata p = params[i];
+
+            _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+            require(s_whitelistedTokens[p.token], SwapRegistry__TokenNotAccepted());
+
+            (bytes memory encodedArgs, bytes32 salt) =
+                _getVaultArgsAndSalt(p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash);
+
+            address addr = i_tokenVaultImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
+
+            require(!s_deployedVaults[addr], SwapRegistry__VaultAlreadyDeployed());
+
+            if (p.token == NATIVE_TOKEN) {
+                require(address(addr).balance >= p.amount, SwapRegistry__InsufficientFundsDeposited());
+            } else {
+                require(IERC20(p.token).balanceOf(addr) >= p.amount, SwapRegistry__InsufficientFundsDeposited());
+            }
+
+            _deployVault(encodedArgs, salt, p.amount);
+            vaults[i] = addr;
+        }
     }
 
     /// @notice Creates a new deterministic token deposit vault for native ETH in one tx

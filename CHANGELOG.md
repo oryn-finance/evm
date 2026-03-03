@@ -4,6 +4,13 @@ All notable changes to the EVM Atomic Swap Escrow contracts are documented in th
 
 ## [Unreleased]
 
+### Added
+
+- **`createTokenSwapVaultBatch`** — Create multiple pre-funded vaults in a single transaction via `VaultParams[]` struct array. Supports both ERC20 and native ETH. Atomic — reverts entirely if any vault fails.
+- **`incrementNonce()`** — Allows creators to bump their nonce, instantly invalidating all pending EIP-712 signed vault authorizations
+- **`Pausable` circuit breaker** — Owner can `pause()` / `unpause()` all vault creation. Does not affect existing vault `withdraw()` or `cancelSwap()` operations.
+- **Richer `VaultCreated` event** — Now includes `recipient`, `commitmentHash`, `expiryBlocks`, and `amount` alongside the 3 indexed fields (`vaultAddress`, `creator`, `token`)
+
 ### Security
 
 - **Settlement guard** — Added `s_settled` flag to `TokenDepositVault` preventing double-withdraw, double-cancel, and withdraw-after-cancel attacks
@@ -18,10 +25,15 @@ All notable changes to the EVM Atomic Swap Escrow contracts are documented in th
 - **`safeParams` modifier refactored** — Extracted validation logic into `_safeParams` internal function
 - **Function naming** — Renamed `_createERC20VaultFromCreator` → `_createErc20VaultFromCreator` for consistent casing
 - **`CREATE_VAULT_TYPEHASH` updated** — Now includes `uint256 nonce` field
+- **`foundry.toml` cleaned up** — Removed commented-out settings
 
 ### Tests
 
-- Expanded test suite to **75 tests** (unit, integration, and fuzz)
+- Expanded test suite to **95 tests** (unit, integration, and fuzz)
+- Added batch vault creation tests (success, empty array, atomicity, pause guard, withdraw, native ETH, events, invalid params)
+- Added pause/unpause tests (owner-only, blocks all 4 creation paths, allows withdraw/cancel while paused)
+- Added `incrementNonce` tests (nonce bump, signature invalidation)
+- Added richer `VaultCreated` event emission test
 - Added settlement guard tests (double-withdraw, double-cancel, withdraw-after-cancel)
 - Added third-party caller tests for `withdraw`
 - Added event emission tests for `Withdraw` and `Cancel`

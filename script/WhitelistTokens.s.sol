@@ -9,6 +9,7 @@ contract WhitelistTokens is Script {
     /// @param _factory EscrowFactory contract address
     /// @param _token ERC20 token address to whitelist
     function run(address _factory, address _token) external {
+        if (_factory == address(0)) revert("WhitelistTokens: zero factory address");
         if (_token == address(0)) revert("WhitelistTokens: zero token address");
         EscrowFactory factory = EscrowFactory(payable(_factory));
 

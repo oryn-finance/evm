@@ -106,8 +106,9 @@ src/
 test/
   Escrow.t.sol             97 tests (unit + integration + fuzz)
 script/
-  DeployRegistry.s.sol     Production deploy script
-  DeployMockTokens.s.sol   Testnet token deployment
+  DeployRegistry.s.sol     Deploy EscrowFactory
+  DeployErc20Tokens.s.sol  Deploy USDC and WBTC ERC20 tokens
+  WhitelistTokens.s.sol    Whitelist a token on an existing factory (run per token)
 ```
 
 ## Dependencies

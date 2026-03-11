@@ -32,7 +32,7 @@ All notable changes to the Oryn Escrow contracts are documented in this file.
 - **Variable naming** — Fixed `expiryblocks` → `expiryBlocks` in `EscrowVault.refund()` for consistent camelCase
 - **Error selector comments** — Added missing `// 0x...` hex selectors for `EscrowFactory__InvalidCommitmentHash`, `EscrowFactory__EmptyBatch`, and `EscrowVault__EscrowAlreadySettled`
 - **Test naming standardised** — All test functions now follow `test_<subject>_<Behavior>` pattern with consistent `Reverts` verb; fixed typos (`witdraw`, `depositinto`, `WIthOut`, `timelock`)
-- **`minttoken()` → `mintToken()`** — Fixed camelCase in `DeployMockTokens.s.sol` mock token contracts
+- **`minttoken()` → `mintToken()`** — Fixed camelCase in `DeployErc20Tokens.s.sol` token contracts
 - **`foundry.toml` cleaned up** — Removed commented-out settings
 
 ### Tests
@@ -70,4 +70,4 @@ All notable changes to the Oryn Escrow contracts are documented in this file.
 - Owner-controlled token whitelist
 - Deterministic escrow addresses via `cloneDeterministicWithImmutableArgs`
 - Fee-on-transfer token protection
-- Deploy scripts (`DeployRegistry.s.sol`, `DeployMockTokens.s.sol`)
+- Deploy scripts (`DeployRegistry.s.sol`, `DeployErc20Tokens.s.sol`)

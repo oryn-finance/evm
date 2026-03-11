@@ -4,17 +4,17 @@ pragma solidity 0.8.28;
 import {Script, console} from "forge-std/Script.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract DeployMockTokens is Script {
+contract DeployErc20Tokens is Script {
     function run(address _owner) external {
         vm.startBroadcast();
 
-        bytes32 saltusdc = keccak256("usdc");
-        USDC x = new USDC{salt: saltusdc}(_owner);
-        console.log("the address to the deployed USDC: ", address(x));
+        bytes32 saltUsdc = keccak256("usdc");
+        USDC usdc = new USDC{salt: saltUsdc}(_owner);
+        console.log("USDC deployed at:", address(usdc));
 
-        bytes32 saltwbtc = keccak256("wbtc");
-        WBTC y = new WBTC{salt: saltwbtc}(_owner);
-        console.log("the address to the deployed WBTC: ", address(y));
+        bytes32 saltWbtc = keccak256("wbtc");
+        WBTC wbtc = new WBTC{salt: saltWbtc}(_owner);
+        console.log("WBTC deployed at:", address(wbtc));
 
         vm.stopBroadcast();
     }

@@ -13,14 +13,6 @@ contract DeployEscrowFactory is Script {
 
         console.log("EscrowFactory deployed at:", address(factory));
 
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(0x3cd5902CDf8e74B7f2340D0BEa25006cE46f7B48);
-        tokens[1] = address(0xcbD43C2a7b6cB3df228FDd49A535C82D673109eB);
-
-        for (uint256 i = 0; i < tokens.length; i++) {
-            factory.whitelistToken(tokens[i]);
-        }
-
         vm.stopBroadcast();
     }
 }

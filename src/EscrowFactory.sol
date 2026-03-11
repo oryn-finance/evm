@@ -88,7 +88,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
 
     /// @notice EIP-712 typehash for CreateEscrowParams (used in createEscrowSigned)
     bytes32 public constant CREATE_ESCROW_TYPEHASH = keccak256(
-        "CreateEscrowParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount,uint256 nonce)"
+        "CreateEscrowParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount)"
     );
 
     /// @notice Sentinel address representing native ETH in escrow operations
@@ -110,10 +110,6 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @notice Mapping tracking all deployed escrow addresses to prevent duplicates
     /// @dev Ensures deterministic addresses are only used once
     mapping(address => bool) public s_deployedEscrows;
-
-    /// @notice Monotonically increasing nonce per creator for EIP-712 signed escrow creation
-    /// @dev Prevents signature replay and allows creators to invalidate pending signatures
-    mapping(address => uint256) public s_nonces;
 
     //////////////////////////////////
     //////////////////////////////////
@@ -198,12 +194,6 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @dev Only callable by contract owner
     function unpause() external onlyOwner {
         _unpause();
-    }
-
-    /// @notice Increments the caller's nonce, invalidating all pending EIP-712 signatures
-    /// @dev Useful for creators who want to cancel outstanding signed escrow authorizations
-    function incrementNonce() external {
-        s_nonces[msg.sender]++;
     }
 
     /// @notice Adds a token to the whitelist for escrow usage
@@ -327,7 +317,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
 
         {
             require(!s_deployedEscrows[addr], EscrowFactory__EscrowAlreadyDeployed());
-            (bool success,) = addr.call{value: amount, gas: 10000}("");
+            (bool success,) = addr.call{value: amount, gas: 8000}("");
             require(success, EscrowFactory__NativeDepositFailed());
         }
 
@@ -433,10 +423,9 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         bytes32 commitmentHash,
         uint256 amount,
         bytes calldata signature
-    ) internal {
-        uint256 nonce = s_nonces[creator]++;
+    ) internal view {
         bytes32 structHash = keccak256(
-            abi.encode(CREATE_ESCROW_TYPEHASH, token, creator, recipient, expiryBlocks, commitmentHash, amount, nonce)
+            abi.encode(CREATE_ESCROW_TYPEHASH, token, creator, recipient, expiryBlocks, commitmentHash, amount)
         );
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
         require(signer == creator, EscrowFactory__InvalidSignature());

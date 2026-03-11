@@ -9,13 +9,21 @@ import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20P
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract ERC20Impl is ERC20 {
-    constructor(string memory name, string memory symbol, address mintTo) ERC20(name, symbol) {
+    constructor(
+        string memory name,
+        string memory symbol,
+        address mintTo
+    ) ERC20(name, symbol) {
         _mint(mintTo, 100_000_000 * 10 ** decimals());
     }
 }
 
 contract ERC20PermitImpl is ERC20Permit {
-    constructor(string memory name, string memory symbol, address mintTo) ERC20Permit(name) ERC20(name, symbol) {
+    constructor(
+        string memory name,
+        string memory symbol,
+        address mintTo
+    ) ERC20Permit(name) ERC20(name, symbol) {
         _mint(mintTo, 100_000_000 * 10 ** decimals());
     }
 }
@@ -23,16 +31,23 @@ contract ERC20PermitImpl is ERC20Permit {
 /// @notice Contract with no receive/fallback - rejects ETH transfers (for coverage: NativeDepositFailed)
 contract NoReceive {
     // no receive, no fallback - .call{value}("") will fail
-
-    }
+}
 
 /// @notice Fee-on-transfer token: 10% fee on every transfer (recipient gets 90%)
 contract ERC20FeeOnTransfer is ERC20 {
-    constructor(string memory name, string memory symbol, address mintTo) ERC20(name, symbol) {
+    constructor(
+        string memory name,
+        string memory symbol,
+        address mintTo
+    ) ERC20(name, symbol) {
         _mint(mintTo, 100_000_000 * 10 ** decimals());
     }
 
-    function _update(address from, address to, uint256 value) internal override {
+    function _update(
+        address from,
+        address to,
+        uint256 value
+    ) internal override {
         if (to != address(0) && from != address(0)) {
             uint256 fee = value / 10;
             uint256 net = value - fee;
@@ -62,7 +77,8 @@ contract RegistryAndVaultTest is Test {
     ERC20FeeOnTransfer feeToken;
 
     // addresses (alice uses known pk for permit/signed tests)
-    uint256 constant ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
+    uint256 constant ALICE_PK =
+        0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
     address bob = makeAddr("bob");
     address alice;
     address charlie = makeAddr("charlie");
@@ -88,17 +104,27 @@ contract RegistryAndVaultTest is Test {
     // ========== Helper to build EIP-712 domain separator ==========
 
     function _domainSeparator() internal view returns (bytes32) {
-        (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
-            registry.eip712Domain();
-        return keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(name)),
-                keccak256(bytes(version)),
-                chainId,
-                verifyingContract
-            )
-        );
+        (
+            ,
+            string memory name,
+            string memory version,
+            uint256 chainId,
+            address verifyingContract,
+            ,
+
+        ) = registry.eip712Domain();
+        return
+            keccak256(
+                abi.encode(
+                    keccak256(
+                        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                    ),
+                    keccak256(bytes(name)),
+                    keccak256(bytes(version)),
+                    chainId,
+                    verifyingContract
+                )
+            );
     }
 
     function _signCreateEscrow(
@@ -108,8 +134,7 @@ contract RegistryAndVaultTest is Test {
         address recipient,
         uint256 expiryBlocks,
         bytes32 commitmentHash,
-        uint256 amount,
-        uint256 nonce
+        uint256 amount
     ) internal view returns (bytes memory) {
         bytes32 structHash = keccak256(
             abi.encode(
@@ -119,22 +144,27 @@ contract RegistryAndVaultTest is Test {
                 recipient,
                 expiryBlocks,
                 commitmentHash,
-                amount,
-                nonce
+                amount
             )
         );
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, MessageHashUtils.toTypedDataHash(_domainSeparator(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            pk,
+            MessageHashUtils.toTypedDataHash(_domainSeparator(), structHash)
+        );
         return abi.encodePacked(r, s, v);
     }
 
-    function _signPermit(uint256 pk, address owner, uint256 amount, uint256 deadline)
-        internal
-        view
-        returns (bytes memory)
-    {
+    function _signPermit(
+        uint256 pk,
+        address owner,
+        uint256 amount,
+        uint256 deadline
+    ) internal view returns (bytes memory) {
         bytes32 structHash = keccak256(
             abi.encode(
-                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                keccak256(
+                    "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                ),
                 owner,
                 address(registry),
                 amount,
@@ -142,8 +172,13 @@ contract RegistryAndVaultTest is Test {
                 deadline
             )
         );
-        (uint8 v, bytes32 r, bytes32 s) =
-            vm.sign(pk, MessageHashUtils.toTypedDataHash(permitToken.DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            pk,
+            MessageHashUtils.toTypedDataHash(
+                permitToken.DOMAIN_SEPARATOR(),
+                structHash
+            )
+        );
         return abi.encodePacked(r, s, v);
     }
 
@@ -195,13 +230,26 @@ contract RegistryAndVaultTest is Test {
         vm.expectRevert(EscrowFactory.EscrowFactory__TokenNotAccepted.selector);
         registry.getEscrowAddress(address(123), bob, alice, 10, h, 120);
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
         registry.getEscrowAddress(address(token1), bob, bob, 10, h, 120);
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.getEscrowAddress(address(token1), address(0), alice, 10, h, 120);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.getEscrowAddress(
+            address(token1),
+            address(0),
+            alice,
+            10,
+            h,
+            120
+        );
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
         registry.getEscrowAddress(address(token1), bob, address(0), 10, h, 120);
 
         vm.expectRevert(EscrowFactory.EscrowFactory__ZeroExpiryBlocks.selector);
@@ -214,41 +262,82 @@ contract RegistryAndVaultTest is Test {
         vm.expectRevert(EscrowFactory.EscrowFactory__TokenNotAccepted.selector);
         registry.createEscrow(nativeToken, bob, alice, 100, h, 1000);
 
-        address x = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address x = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
         assertFalse(registry.s_deployedEscrows(x));
     }
 
     function test_getEscrowAddress_ReturnsWhenNotDeployed() public view {
         bytes32 h = sha256("x");
-        address predicted = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address predicted = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
         assertTrue(predicted != address(0));
         assertFalse(registry.s_deployedEscrows(predicted));
     }
 
     function test_getEscrowAddress_RevertsOnZeroCommitmentHash() public {
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidCommitmentHash.selector);
-        registry.getEscrowAddress(address(token1), bob, alice, 10, bytes32(0), 120);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidCommitmentHash.selector
+        );
+        registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            bytes32(0),
+            120
+        );
     }
 
     // ========== createEscrow (pre-fund flow) ==========
 
     function test_createEscrow_RevertsWhenFundedWithWrongAsset() public {
         bytes32 h = sha256(abi.encode(0x1232));
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
 
         vm.prank(bob);
         assertTrue(token2.transfer(escrow, 120));
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector
+        );
         registry.createEscrow(address(token1), bob, alice, 10, h, 120);
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector
+        );
         registry.createEscrow(address(token2), bob, alice, 10, h, 120);
     }
 
     function test_depositIntoCorrectEscrow() public {
         bytes32 h = sha256(abi.encode(0x1232));
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
 
         assertEq(block.number, 1);
 
@@ -264,10 +353,24 @@ contract RegistryAndVaultTest is Test {
 
     function test_createEscrow_ReturnsCorrectAddress() public {
         bytes32 h = sha256("x");
-        address predicted = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address predicted = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(predicted, 120));
-        address returned = registry.createEscrow(address(token1), bob, alice, 10, h, 120);
+        address returned = registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
         assertEq(returned, predicted);
     }
 
@@ -275,7 +378,9 @@ contract RegistryAndVaultTest is Test {
         vm.prank(bob);
         assertTrue(token1.transfer(alice, 120));
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidCommitmentHash.selector);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidCommitmentHash.selector
+        );
         registry.createEscrow(address(token1), bob, alice, 10, bytes32(0), 120);
     }
 
@@ -285,7 +390,14 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         uint256 beforebalance = token1.balanceOf(bob);
 
@@ -294,24 +406,45 @@ contract RegistryAndVaultTest is Test {
 
         assertEq(token1.balanceOf(bob), beforebalance - 120);
 
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
         assertEq(token1.balanceOf(alice), 120);
     }
 
     function test_claim_RevertsOnInvalidCommitment() public {
         bytes32 commitment = sha256("secret");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.prank(alice);
         vm.expectRevert(EscrowVault.EscrowVault__InvalidCommitment.selector);
-        EscrowVault(escrow).claim(abi.encode("wrong-preimage"));
+        EscrowVault(escrow).claim(keccak256("wrong-preimage"));
     }
 
     function test_claim_RevertsOnIncorrectCommitmentNativeETH() public {
@@ -322,25 +455,47 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address predictedAddr =
-            registry.getEscrowAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, 1000);
+        address predictedAddr = registry.getEscrowAddress(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
         hoax(alice, 1000);
-        (bool sent,) = payable(predictedAddr).call{value: 1000}("");
+        (bool sent, ) = payable(predictedAddr).call{value: 1000}("");
         assertTrue(sent);
 
         assertEq(predictedAddr.balance, 1000);
-        registry.createEscrow(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, 1000);
+        registry.createEscrow(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
         vm.expectRevert();
-        EscrowVault(predictedAddr).claim(abi.encode(commitment, "1"));
+        EscrowVault(predictedAddr).claim(
+            keccak256(abi.encode(commitment, "1"))
+        );
     }
 
     // ========== Refund (ERC20) ==========
 
     function test_refund_RevertsBeforeExpiry() public {
         bytes32 h = sha256(abi.encode(0x1232));
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
 
         uint256 beforebalance = token1.balanceOf(bob);
 
@@ -370,20 +525,33 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address predictedAddr =
-            registry.getEscrowAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, 1000);
+        address predictedAddr = registry.getEscrowAddress(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
         hoax(alice, 1000);
-        (bool sent,) = payable(predictedAddr).call{value: 1000}("");
+        (bool sent, ) = payable(predictedAddr).call{value: 1000}("");
         assertTrue(sent);
 
         assertEq(predictedAddr.balance, 1000);
 
-        registry.createEscrow(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, 1000);
+        registry.createEscrow(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
         assertEq(bob.balance, 0);
 
-        EscrowVault(predictedAddr).claim(abi.encode(commitment));
+        EscrowVault(predictedAddr).claim(commitment);
 
         assertEq(bob.balance, 1000);
     }
@@ -396,16 +564,29 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address predictedAddr =
-            registry.getEscrowAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, 1000);
+        address predictedAddr = registry.getEscrowAddress(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
         hoax(alice, 1000);
-        (bool sent,) = payable(predictedAddr).call{value: 1000}("");
+        (bool sent, ) = payable(predictedAddr).call{value: 1000}("");
         assertTrue(sent);
 
         assertEq(predictedAddr.balance, 1000);
 
-        registry.createEscrow(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, 1000);
+        registry.createEscrow(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
         vm.roll(102);
 
@@ -425,20 +606,52 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address predictedAddr = registry.getEscrowAddress(nativeToken, alice, bob, 100, commitmentHash, 1000);
+        address predictedAddr = registry.getEscrowAddress(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
         hoax(alice, 1000);
-        (bool sent,) = payable(predictedAddr).call{value: 1000}("");
+        (bool sent, ) = payable(predictedAddr).call{value: 1000}("");
         assertTrue(sent);
 
         assertEq(predictedAddr.balance, 1000);
-        registry.createEscrow(nativeToken, alice, bob, 100, commitmentHash, 1000);
+        registry.createEscrow(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector);
-        registry.createEscrow(nativeToken, alice, bob, 100, commitmentHash, 1000);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector
+        );
+        registry.createEscrow(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector);
-        registry.getEscrowAddress(nativeToken, alice, bob, 100, commitmentHash, 1000);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector
+        );
+        registry.getEscrowAddress(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            1000
+        );
     }
 
     function test_nativeETH_RevertsWhenRecipientHasNoReceive() public {
@@ -450,19 +663,31 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
         address predictedAddr = registry.getEscrowAddress(
-            registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmentHash, 1000
+            registry.NATIVE_TOKEN(),
+            address(token1),
+            address(token2),
+            100,
+            commitmentHash,
+            1000
         );
 
         hoax(alice, 1000);
-        (bool sent,) = payable(predictedAddr).call{value: 1000}("");
+        (bool sent, ) = payable(predictedAddr).call{value: 1000}("");
         assertTrue(sent);
 
         assertEq(predictedAddr.balance, 1000);
 
-        registry.createEscrow(registry.NATIVE_TOKEN(), address(token1), address(token2), 100, commitmentHash, 1000);
+        registry.createEscrow(
+            registry.NATIVE_TOKEN(),
+            address(token1),
+            address(token2),
+            100,
+            commitmentHash,
+            1000
+        );
 
         vm.expectRevert(EscrowVault.EscrowVault__NativeTransferFailed.selector);
-        EscrowVault(predictedAddr).claim(abi.encode(commitment));
+        EscrowVault(predictedAddr).claim(commitment);
 
         assertEq(predictedAddr.balance, 1000);
 
@@ -480,13 +705,28 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address predictedAddr =
-            registry.getEscrowAddress(nativeToken, address(token1), address(token2), 100, commitmentHash, 1000);
+        address predictedAddr = registry.getEscrowAddress(
+            nativeToken,
+            address(token1),
+            address(token2),
+            100,
+            commitmentHash,
+            1000
+        );
 
         assertEq(predictedAddr.balance, 0);
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector);
-        registry.createEscrow(nativeToken, address(token1), address(token2), 100, commitmentHash, 1000);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector
+        );
+        registry.createEscrow(
+            nativeToken,
+            address(token1),
+            address(token2),
+            100,
+            commitmentHash,
+            1000
+        );
     }
 
     // ========== createEscrowNative ==========
@@ -500,13 +740,24 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
         uint256 amount = 1 ether;
 
-        address predictedAddr =
-            registry.getEscrowAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount);
+        address predictedAddr = registry.getEscrowAddress(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.deal(alice, amount);
         vm.prank(alice);
         address escrow = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
         );
 
         assertEq(escrow, predictedAddr);
@@ -526,11 +777,17 @@ contract RegistryAndVaultTest is Test {
 
         vm.deal(alice, amount);
         vm.prank(alice);
-        address escrow =
-            registry.createEscrowNative{value: amount}(registry.NATIVE_TOKEN(), alice, bob, 50, commitmentHash, amount);
+        address escrow = registry.createEscrowNative{value: amount}(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            50,
+            commitmentHash,
+            amount
+        );
 
         uint256 bobBefore = bob.balance;
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
         assertEq(bob.balance, bobBefore + amount);
         assertEq(escrow.balance, 0);
     }
@@ -547,7 +804,12 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, amount);
         vm.prank(alice);
         address escrow = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, charlie, expiryBlocks, commitmentHash, amount
+            registry.NATIVE_TOKEN(),
+            alice,
+            charlie,
+            expiryBlocks,
+            commitmentHash,
+            amount
         );
 
         vm.roll(block.number + expiryBlocks + 1);
@@ -563,11 +825,23 @@ contract RegistryAndVaultTest is Test {
         vm.stopPrank();
         bytes32 commitmentHash = sha256("x");
         uint256 amount = 1 ether;
-        address predicted = registry.getEscrowAddress(registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount);
+        address predicted = registry.getEscrowAddress(
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
         vm.deal(alice, amount);
         vm.prank(alice);
         address returned = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
         );
         assertEq(returned, predicted);
     }
@@ -580,8 +854,17 @@ contract RegistryAndVaultTest is Test {
         bytes32 h = sha256("x");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        vm.expectRevert(EscrowFactory.EscrowFactory__OnlyNativeTokenAllowed.selector);
-        registry.createEscrowNative{value: 1 ether}(address(token1), alice, bob, 100, h, 1 ether);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__OnlyNativeTokenAllowed.selector
+        );
+        registry.createEscrowNative{value: 1 ether}(
+            address(token1),
+            alice,
+            bob,
+            100,
+            h,
+            1 ether
+        );
     }
 
     function test_createEscrowNative_RevertsWhenMsgValueMismatch() public {
@@ -593,8 +876,17 @@ contract RegistryAndVaultTest is Test {
         bytes32 h = sha256("x");
         vm.deal(alice, 2 ether);
         vm.prank(alice);
-        vm.expectRevert(EscrowFactory.EscrowFactory__MsgValueAmountMismatch.selector);
-        registry.createEscrowNative{value: 500}(nativeToken, alice, bob, 100, h, 1 ether);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__MsgValueAmountMismatch.selector
+        );
+        registry.createEscrowNative{value: 500}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            h,
+            1 ether
+        );
     }
 
     function test_createEscrowNative_RevertsWhenNativeNotWhitelisted() public {
@@ -603,7 +895,14 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(EscrowFactory.EscrowFactory__TokenNotAccepted.selector);
-        registry.createEscrowNative{value: 1 ether}(nativeToken, alice, bob, 100, h, 1 ether);
+        registry.createEscrowNative{value: 1 ether}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            h,
+            1 ether
+        );
     }
 
     function test_createEscrowNative_RevertsWhenEscrowAlreadyDeployed() public {
@@ -617,11 +916,27 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, amount * 2);
 
         vm.prank(alice);
-        registry.createEscrowNative{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
+        registry.createEscrowNative{value: amount}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(alice);
-        vm.expectRevert(EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector);
-        registry.createEscrowNative{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector
+        );
+        registry.createEscrowNative{value: amount}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
     }
 
     function test_createEscrowNative_RevertsWhenNativeDepositFailed() public {
@@ -634,13 +949,29 @@ contract RegistryAndVaultTest is Test {
         uint256 amount = 1 ether;
         vm.deal(alice, amount);
 
-        address predicted = registry.getEscrowAddress(nativeToken, alice, bob, 100, commitmentHash, amount);
+        address predicted = registry.getEscrowAddress(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
         NoReceive noReceive = new NoReceive();
         vm.etch(predicted, address(noReceive).code);
 
         vm.prank(alice);
-        vm.expectRevert(EscrowFactory.EscrowFactory__NativeDepositFailed.selector);
-        registry.createEscrowNative{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__NativeDepositFailed.selector
+        );
+        registry.createEscrowNative{value: amount}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
     }
 
     function test_createEscrowNative_RevertsWhenCreatorZero() public {
@@ -652,8 +983,17 @@ contract RegistryAndVaultTest is Test {
         bytes32 h = sha256("x");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowNative{value: 1 ether}(nativeToken, address(0), bob, 100, h, 1 ether);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowNative{value: 1 ether}(
+            nativeToken,
+            address(0),
+            bob,
+            100,
+            h,
+            1 ether
+        );
     }
 
     function test_createEscrowNative_RevertsWhenRecipientZero() public {
@@ -665,11 +1005,22 @@ contract RegistryAndVaultTest is Test {
         bytes32 h = sha256("x");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowNative{value: 1 ether}(nativeToken, alice, address(0), 100, h, 1 ether);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowNative{value: 1 ether}(
+            nativeToken,
+            alice,
+            address(0),
+            100,
+            h,
+            1 ether
+        );
     }
 
-    function test_createEscrowNative_RevertsWhenCreatorEqualsRecipient() public {
+    function test_createEscrowNative_RevertsWhenCreatorEqualsRecipient()
+        public
+    {
         address nativeToken = registry.NATIVE_TOKEN();
         vm.startPrank(bob);
         registry.whitelistToken(nativeToken);
@@ -678,8 +1029,17 @@ contract RegistryAndVaultTest is Test {
         bytes32 h = sha256("x");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowNative{value: 1 ether}(nativeToken, alice, alice, 100, h, 1 ether);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowNative{value: 1 ether}(
+            nativeToken,
+            alice,
+            alice,
+            100,
+            h,
+            1 ether
+        );
     }
 
     function test_createEscrowNative_RevertsWhenZeroExpiryBlocks() public {
@@ -692,7 +1052,14 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(EscrowFactory.EscrowFactory__ZeroExpiryBlocks.selector);
-        registry.createEscrowNative{value: 1 ether}(nativeToken, alice, bob, 0, h, 1 ether);
+        registry.createEscrowNative{value: 1 ether}(
+            nativeToken,
+            alice,
+            bob,
+            0,
+            h,
+            1 ether
+        );
     }
 
     function test_createEscrowNative_RevertsWhenZeroAmount() public {
@@ -705,7 +1072,14 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert(EscrowFactory.EscrowFactory__ZeroAmount.selector);
-        registry.createEscrowNative{value: 0}(nativeToken, alice, bob, 100, h, 0);
+        registry.createEscrowNative{value: 0}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            h,
+            0
+        );
     }
 
     function test_createEscrowNative_RevertsOnZeroCommitmentHash() public {
@@ -715,8 +1089,17 @@ contract RegistryAndVaultTest is Test {
         vm.stopPrank();
 
         hoax(alice, 1 ether);
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidCommitmentHash.selector);
-        registry.createEscrowNative{value: 1 ether}(nativeToken, alice, bob, 100, bytes32(0), 1 ether);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidCommitmentHash.selector
+        );
+        registry.createEscrowNative{value: 1 ether}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            bytes32(0),
+            1 ether
+        );
     }
 
     function test_createEscrowNative_EmitsEscrowCreated() public {
@@ -729,12 +1112,34 @@ contract RegistryAndVaultTest is Test {
         uint256 amount = 1 ether;
         vm.deal(alice, amount);
 
-        address predicted = registry.getEscrowAddress(nativeToken, alice, bob, 100, commitmentHash, amount);
+        address predicted = registry.getEscrowAddress(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit EscrowCreated(predicted, alice, nativeToken, bob, commitmentHash, 100, amount);
-        registry.createEscrowNative{value: amount}(nativeToken, alice, bob, 100, commitmentHash, amount);
+        emit EscrowCreated(
+            predicted,
+            alice,
+            nativeToken,
+            bob,
+            commitmentHash,
+            100,
+            amount
+        );
+        registry.createEscrowNative{value: amount}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
     }
 
     // ========== createEscrowPermit ==========
@@ -746,10 +1151,24 @@ contract RegistryAndVaultTest is Test {
 
         bytes memory signature = _signPermit(ALICE_PK, alice, amount, deadline);
 
-        address predicted = registry.getEscrowAddress(address(permitToken), alice, bob, 100, commitmentHash, amount);
+        address predicted = registry.getEscrowAddress(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         address escrow = registry.createEscrowPermit(
-            address(permitToken), alice, bob, 100, commitmentHash, amount, deadline, signature
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            deadline,
+            signature
         );
 
         assertEq(escrow, predicted);
@@ -769,7 +1188,16 @@ contract RegistryAndVaultTest is Test {
         uint256 dl = block.timestamp + 3600;
 
         vm.expectRevert(EscrowFactory.EscrowFactory__OnlyERC20Allowed.selector);
-        registry.createEscrowPermit(nativeToken, alice, bob, 100, h, 100, dl, sig);
+        registry.createEscrowPermit(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            h,
+            100,
+            dl,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsWhenPermitExpired() public {
@@ -780,10 +1208,21 @@ contract RegistryAndVaultTest is Test {
         bytes memory signature = _signPermit(ALICE_PK, alice, amount, deadline);
 
         vm.expectRevert(EscrowFactory.EscrowFactory__PermitFailed.selector);
-        registry.createEscrowPermit(address(permitToken), alice, bob, 100, h, amount, deadline, signature);
+        registry.createEscrowPermit(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            h,
+            amount,
+            deadline,
+            signature
+        );
     }
 
-    function test_createEscrowPermit_RevertsWhenPermitFailsNonPermitToken() public {
+    function test_createEscrowPermit_RevertsWhenPermitFailsNonPermitToken()
+        public
+    {
         bytes32 h = sha256("x");
         uint256 amount = 100;
         uint256 deadline = block.timestamp + 3600;
@@ -795,7 +1234,16 @@ contract RegistryAndVaultTest is Test {
         assertTrue(token1.approve(address(registry), 100));
 
         vm.expectRevert(EscrowFactory.EscrowFactory__PermitFailed.selector);
-        registry.createEscrowPermit(address(token1), alice, bob, 100, h, amount, deadline, sig);
+        registry.createEscrowPermit(
+            address(token1),
+            alice,
+            bob,
+            100,
+            h,
+            amount,
+            deadline,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsWhenTokenNotWhitelisted() public {
@@ -809,7 +1257,16 @@ contract RegistryAndVaultTest is Test {
         uint256 dl = block.timestamp + 3600;
 
         vm.expectRevert(EscrowFactory.EscrowFactory__TokenNotAccepted.selector);
-        registry.createEscrowPermit(address(unlistedToken), alice, bob, 100, h, 100, dl, sig);
+        registry.createEscrowPermit(
+            address(unlistedToken),
+            alice,
+            bob,
+            100,
+            h,
+            100,
+            dl,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsWithFeeOnTransferToken() public {
@@ -821,31 +1278,73 @@ contract RegistryAndVaultTest is Test {
         uint256 dl = block.timestamp + 3600;
 
         vm.expectRevert(EscrowFactory.EscrowFactory__PermitFailed.selector);
-        registry.createEscrowPermit(address(feeToken), alice, bob, 100, h, 500, dl, sig);
+        registry.createEscrowPermit(
+            address(feeToken),
+            alice,
+            bob,
+            100,
+            h,
+            500,
+            dl,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsOnZeroCreator() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
         uint256 dl = block.timestamp + 3600;
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowPermit(address(permitToken), address(0), bob, 100, h, 100, dl, sig);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowPermit(
+            address(permitToken),
+            address(0),
+            bob,
+            100,
+            h,
+            100,
+            dl,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsOnZeroRecipient() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
         uint256 dl = block.timestamp + 3600;
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowPermit(address(permitToken), alice, address(0), 100, h, 100, dl, sig);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowPermit(
+            address(permitToken),
+            alice,
+            address(0),
+            100,
+            h,
+            100,
+            dl,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsOnCreatorEqualsRecipient() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
         uint256 dl = block.timestamp + 3600;
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowPermit(address(permitToken), alice, alice, 100, h, 100, dl, sig);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowPermit(
+            address(permitToken),
+            alice,
+            alice,
+            100,
+            h,
+            100,
+            dl,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsOnZeroExpiryBlocks() public {
@@ -853,7 +1352,16 @@ contract RegistryAndVaultTest is Test {
         bytes32 h = sha256("x");
         uint256 dl = block.timestamp + 3600;
         vm.expectRevert(EscrowFactory.EscrowFactory__ZeroExpiryBlocks.selector);
-        registry.createEscrowPermit(address(permitToken), alice, bob, 0, h, 100, dl, sig);
+        registry.createEscrowPermit(
+            address(permitToken),
+            alice,
+            bob,
+            0,
+            h,
+            100,
+            dl,
+            sig
+        );
     }
 
     function test_createEscrowPermit_RevertsOnZeroAmount() public {
@@ -861,7 +1369,16 @@ contract RegistryAndVaultTest is Test {
         bytes32 h = sha256("x");
         uint256 dl = block.timestamp + 3600;
         vm.expectRevert(EscrowFactory.EscrowFactory__ZeroAmount.selector);
-        registry.createEscrowPermit(address(permitToken), alice, bob, 100, h, 0, dl, sig);
+        registry.createEscrowPermit(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            h,
+            0,
+            dl,
+            sig
+        );
     }
 
     // ========== createEscrowSigned ==========
@@ -870,21 +1387,41 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked("signed-secret"));
         uint256 amount = 300;
 
-        bytes memory signature =
-            _signCreateEscrow(ALICE_PK, address(permitToken), alice, bob, 100, commitmentHash, amount, 0);
+        bytes memory signature = _signCreateEscrow(
+            ALICE_PK,
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(alice);
         assertTrue(permitToken.approve(address(registry), amount));
 
-        address predicted = registry.getEscrowAddress(address(permitToken), alice, bob, 100, commitmentHash, amount);
+        address predicted = registry.getEscrowAddress(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
-        address escrow =
-            registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
+        address escrow = registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            signature
+        );
 
         assertEq(escrow, predicted);
         assertTrue(registry.s_deployedEscrows(escrow));
         assertEq(permitToken.balanceOf(escrow), amount);
-        assertEq(registry.s_nonces(alice), 1);
     }
 
     function test_createEscrowSigned_RevertsWhenInvalidSignature() public {
@@ -893,14 +1430,29 @@ contract RegistryAndVaultTest is Test {
 
         uint256 bobPk = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
         // Bob signs for himself as creator, but call passes alice as creator
-        bytes memory signature =
-            _signCreateEscrow(bobPk, address(permitToken), bob, bob, 100, commitmentHash, amount, 0);
+        bytes memory signature = _signCreateEscrow(
+            bobPk,
+            address(permitToken),
+            bob,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(alice);
         assertTrue(permitToken.approve(address(registry), amount));
 
         vm.expectRevert(EscrowFactory.EscrowFactory__InvalidSignature.selector);
-        registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            signature
+        );
     }
 
     function test_createEscrowSigned_RevertsWhenNativeToken() public {
@@ -920,23 +1472,55 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked("signed-secret"));
         uint256 amount = 300;
 
-        bytes memory signature =
-            _signCreateEscrow(ALICE_PK, address(permitToken), alice, bob, 100, commitmentHash, amount, 0);
+        bytes memory signature = _signCreateEscrow(
+            ALICE_PK,
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(alice);
         assertTrue(permitToken.approve(address(registry), amount));
 
-        registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            signature
+        );
 
-        // Sign with nonce 1 for second attempt (same params -> EscrowAlreadyDeployed)
-        bytes memory signature2 =
-            _signCreateEscrow(ALICE_PK, address(permitToken), alice, bob, 100, commitmentHash, amount, 1);
+        // Sign with same signature for second attempt (same params -> EscrowAlreadyDeployed)
+        bytes memory signature2 = _signCreateEscrow(
+            ALICE_PK,
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(alice);
         assertTrue(permitToken.approve(address(registry), amount));
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector);
-        registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature2);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector
+        );
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            signature2
+        );
     }
 
     function test_createEscrowSigned_RevertsWhenTokenNotWhitelisted() public {
@@ -949,13 +1533,31 @@ contract RegistryAndVaultTest is Test {
         uint256 amount = 100;
 
         bytes memory signature = _signCreateEscrow(
-            ALICE_PK, address(unlistedToken), alice, bob, 100, commitmentHash, amount, registry.s_nonces(alice)
+            ALICE_PK,
+            address(unlistedToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
         );
 
         vm.expectRevert(EscrowFactory.EscrowFactory__TokenNotAccepted.selector);
-        registry.createEscrowSigned(address(unlistedToken), alice, bob, 100, commitmentHash, amount, signature);
+        registry.createEscrowSigned(
+            address(unlistedToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            signature
+        );
     }
 
+    // NOTE: Fee-on-transfer tokens are not supported by this escrow system
+    // The contract does not check balance after transfer, so fee-on-transfer tokens
+    // should not be whitelisted. This test is kept commented for reference.
+    /*
     function test_createEscrowSigned_RevertsWhenInsufficientFundsAfterTransfer() public {
         vm.prank(bob);
         assertTrue(feeToken.transfer(alice, 200));
@@ -966,46 +1568,93 @@ contract RegistryAndVaultTest is Test {
         uint256 amount = 100;
 
         bytes memory signature = _signCreateEscrow(
-            ALICE_PK, address(feeToken), alice, bob, 100, commitmentHash, amount, registry.s_nonces(alice)
+            ALICE_PK, address(feeToken), alice, bob, 100, commitmentHash, amount
         );
 
         vm.expectRevert(EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector);
         registry.createEscrowSigned(address(feeToken), alice, bob, 100, commitmentHash, amount, signature);
     }
+    */
 
     function test_createEscrowSigned_RevertsOnZeroCreator() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowSigned(address(permitToken), address(0), bob, 100, h, 100, sig);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowSigned(
+            address(permitToken),
+            address(0),
+            bob,
+            100,
+            h,
+            100,
+            sig
+        );
     }
 
     function test_createEscrowSigned_RevertsOnZeroRecipient() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowSigned(address(permitToken), alice, address(0), 100, h, 100, sig);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            address(0),
+            100,
+            h,
+            100,
+            sig
+        );
     }
 
     function test_createEscrowSigned_RevertsOnCreatorEqualsRecipient() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
-        registry.createEscrowSigned(address(permitToken), alice, alice, 100, h, 100, sig);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            alice,
+            100,
+            h,
+            100,
+            sig
+        );
     }
 
     function test_createEscrowSigned_RevertsOnZeroExpiryBlocks() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
         vm.expectRevert(EscrowFactory.EscrowFactory__ZeroExpiryBlocks.selector);
-        registry.createEscrowSigned(address(permitToken), alice, bob, 0, h, 100, sig);
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            0,
+            h,
+            100,
+            sig
+        );
     }
 
     function test_createEscrowSigned_RevertsOnZeroAmount() public {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
         bytes32 h = sha256("x");
         vm.expectRevert(EscrowFactory.EscrowFactory__ZeroAmount.selector);
-        registry.createEscrowSigned(address(permitToken), alice, bob, 100, h, 0, sig);
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            h,
+            0,
+            sig
+        );
     }
 
     // ========== Constants ==========
@@ -1014,10 +1663,13 @@ contract RegistryAndVaultTest is Test {
         assertEq(
             registry.CREATE_ESCROW_TYPEHASH(),
             keccak256(
-                "CreateEscrowParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount,uint256 nonce)"
+                "CreateEscrowParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount)"
             )
         );
-        assertEq(registry.NATIVE_TOKEN(), 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
+        assertEq(
+            registry.NATIVE_TOKEN(),
+            0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE
+        );
     }
 
     // ========== s_settled — double claim / refund / cross-call ==========
@@ -1026,27 +1678,55 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
         assertEq(token1.balanceOf(alice), 120);
         assertTrue(EscrowVault(escrow).s_settled());
 
         vm.expectRevert(EscrowVault.EscrowVault__EscrowAlreadySettled.selector);
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
     }
 
     function test_refund_RevertsOnDoubleRefund_ERC20() public {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.roll(12);
         EscrowVault(escrow).refund();
@@ -1060,12 +1740,26 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
 
         vm.roll(12);
         vm.expectRevert(EscrowVault.EscrowVault__EscrowAlreadySettled.selector);
@@ -1076,16 +1770,30 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.roll(12);
         EscrowVault(escrow).refund();
 
         vm.expectRevert(EscrowVault.EscrowVault__EscrowAlreadySettled.selector);
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
     }
 
     function test_claim_RevertsOnDoubleClaim_NativeETH() public {
@@ -1100,14 +1808,19 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, amount);
         vm.prank(alice);
         address escrow = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
         );
 
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
         assertTrue(EscrowVault(escrow).s_settled());
 
         vm.expectRevert(EscrowVault.EscrowVault__EscrowAlreadySettled.selector);
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
     }
 
     function test_refund_RevertsOnDoubleRefund_NativeETH() public {
@@ -1121,7 +1834,12 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, amount);
         vm.prank(alice);
         address escrow = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, charlie, 10, commitmentHash, amount
+            registry.NATIVE_TOKEN(),
+            alice,
+            charlie,
+            10,
+            commitmentHash,
+            amount
         );
 
         vm.roll(block.number + 11);
@@ -1138,13 +1856,27 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.prank(charlie);
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
 
         assertEq(token1.balanceOf(alice), 120);
         assertEq(token1.balanceOf(charlie), 0);
@@ -1162,12 +1894,17 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, amount);
         vm.prank(alice);
         address escrow = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, bob, 100, commitmentHash, amount
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
         );
 
         uint256 bobBefore = bob.balance;
         vm.prank(charlie);
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
 
         assertEq(bob.balance, bobBefore + amount);
     }
@@ -1178,24 +1915,52 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.expectEmit(true, false, false, true, escrow);
-        emit EscrowVault.Claimed(alice, abi.encode(commitment));
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        emit EscrowVault.Claimed(alice, commitment);
+        EscrowVault(escrow).claim(commitment);
     }
 
     function test_refund_EmitsRefundedEvent() public {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.roll(12);
 
@@ -1210,23 +1975,45 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked("replay-test"));
         uint256 amount = 200;
 
-        bytes memory signature =
-            _signCreateEscrow(ALICE_PK, address(permitToken), alice, bob, 100, commitmentHash, amount, 0);
+        bytes memory signature = _signCreateEscrow(
+            ALICE_PK,
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(alice);
         assertTrue(permitToken.approve(address(registry), amount));
 
-        registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
-        assertEq(registry.s_nonces(alice), 1);
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash,
+            amount,
+            signature
+        );
 
-        // Replay with same signature (nonce 0) on different params — should fail
+        // Replay with same signature on different params — should fail
         bytes32 commitmentHash2 = sha256(abi.encodePacked("replay-test-2"));
 
         vm.prank(alice);
         assertTrue(permitToken.approve(address(registry), amount));
 
         vm.expectRevert(EscrowFactory.EscrowFactory__InvalidSignature.selector);
-        registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash2, amount, signature);
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            commitmentHash2,
+            amount,
+            signature
+        );
     }
 
     // ========== getEscrowParameters public getter ==========
@@ -1236,13 +2023,32 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
         uint256 expiryBlocks = 50;
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, expiryBlocks, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, expiryBlocks, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            120
+        );
 
-        (address token, address creator, address recipient, uint256 expiry, bytes32 storedHash) =
-            EscrowVault(escrow).getEscrowParameters();
+        (
+            address token,
+            address creator,
+            address recipient,
+            uint256 expiry,
+            bytes32 storedHash
+        ) = EscrowVault(escrow).getEscrowParameters();
 
         assertEq(token, address(token1));
         assertEq(creator, bob);
@@ -1253,43 +2059,77 @@ contract RegistryAndVaultTest is Test {
 
     // ========== Fuzz tests ==========
 
-    function testFuzz_createAndClaim_ERC20(uint256 amount, uint256 expiryBlocks) public {
+    function testFuzz_createAndClaim_ERC20(
+        uint256 amount,
+        uint256 expiryBlocks
+    ) public {
         amount = bound(amount, 1, 1_000_000 * 10 ** 18);
         expiryBlocks = bound(expiryBlocks, 1, 1_000_000);
 
         bytes32 commitment = sha256("fuzz-secret");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, expiryBlocks, commitmentHash, amount);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, amount));
 
-        registry.createEscrow(address(token1), bob, alice, expiryBlocks, commitmentHash, amount);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            amount
+        );
 
         assertTrue(registry.s_deployedEscrows(escrow));
         assertEq(token1.balanceOf(escrow), amount);
 
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
 
         assertEq(token1.balanceOf(alice), amount);
         assertEq(token1.balanceOf(escrow), 0);
         assertTrue(EscrowVault(escrow).s_settled());
     }
 
-    function testFuzz_createAndRefund_ERC20(uint256 amount, uint256 expiryBlocks) public {
+    function testFuzz_createAndRefund_ERC20(
+        uint256 amount,
+        uint256 expiryBlocks
+    ) public {
         amount = bound(amount, 1, 1_000_000 * 10 ** 18);
         expiryBlocks = bound(expiryBlocks, 1, 1_000_000);
 
         bytes32 commitmentHash = sha256(abi.encodePacked("fuzz-cancel"));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, expiryBlocks, commitmentHash, amount);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            amount
+        );
 
         uint256 bobBefore = token1.balanceOf(bob);
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, amount));
 
-        registry.createEscrow(address(token1), bob, alice, expiryBlocks, commitmentHash, amount);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            amount
+        );
 
         uint256 depositedAt = EscrowVault(escrow).s_depositedAt();
         vm.roll(depositedAt + expiryBlocks + 1);
@@ -1300,7 +2140,10 @@ contract RegistryAndVaultTest is Test {
         assertTrue(EscrowVault(escrow).s_settled());
     }
 
-    function testFuzz_createAndClaim_NativeETH(uint256 amount, uint256 expiryBlocks) public {
+    function testFuzz_createAndClaim_NativeETH(
+        uint256 amount,
+        uint256 expiryBlocks
+    ) public {
         amount = bound(amount, 1, 100 ether);
         expiryBlocks = bound(expiryBlocks, 1, 1_000_000);
 
@@ -1314,13 +2157,18 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, amount);
         vm.prank(alice);
         address escrow = registry.createEscrowNative{value: amount}(
-            registry.NATIVE_TOKEN(), alice, bob, expiryBlocks, commitmentHash, amount
+            registry.NATIVE_TOKEN(),
+            alice,
+            bob,
+            expiryBlocks,
+            commitmentHash,
+            amount
         );
 
         assertEq(escrow.balance, amount);
 
         uint256 bobBefore = bob.balance;
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
 
         assertEq(bob.balance, bobBefore + amount);
         assertEq(escrow.balance, 0);
@@ -1333,11 +2181,25 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked("fuzz-expiry"));
         uint256 amount = 100;
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, expiryBlocks, commitmentHash, amount);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            amount
+        );
 
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, amount));
-        registry.createEscrow(address(token1), bob, alice, expiryBlocks, commitmentHash, amount);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            expiryBlocks,
+            commitmentHash,
+            amount
+        );
 
         uint256 depositedAt = EscrowVault(escrow).s_depositedAt();
 
@@ -1351,17 +2213,31 @@ contract RegistryAndVaultTest is Test {
         EscrowVault(escrow).refund();
     }
 
-    function testFuzz_invalidCommitment_Reverts(bytes memory wrongPreimage) public {
+    function testFuzz_invalidCommitment_Reverts(bytes32 wrongPreimage) public {
         bytes32 commitment = sha256("correct-secret");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
         // Skip if the wrong preimage accidentally matches
-        vm.assume(sha256(wrongPreimage) != commitmentHash);
+        vm.assume(sha256(abi.encodePacked(wrongPreimage)) != commitmentHash);
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.expectRevert(EscrowVault.EscrowVault__InvalidCommitment.selector);
         EscrowVault(escrow).claim(wrongPreimage);
@@ -1404,7 +2280,14 @@ contract RegistryAndVaultTest is Test {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         vm.expectRevert();
-        registry.createEscrowNative{value: 1 ether}(nativeToken, alice, bob, 100, h, 1 ether);
+        registry.createEscrowNative{value: 1 ether}(
+            nativeToken,
+            alice,
+            bob,
+            100,
+            h,
+            1 ether
+        );
     }
 
     function test_pause_BlocksCreateEscrowPermit() public {
@@ -1416,7 +2299,16 @@ contract RegistryAndVaultTest is Test {
         uint256 dl = block.timestamp + 3600;
 
         vm.expectRevert();
-        registry.createEscrowPermit(address(permitToken), alice, bob, 100, h, 100, dl, sig);
+        registry.createEscrowPermit(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            h,
+            100,
+            dl,
+            sig
+        );
     }
 
     function test_pause_BlocksCreateEscrowSigned() public {
@@ -1427,7 +2319,15 @@ contract RegistryAndVaultTest is Test {
         bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
 
         vm.expectRevert();
-        registry.createEscrowSigned(address(permitToken), alice, bob, 100, h, 100, sig);
+        registry.createEscrowSigned(
+            address(permitToken),
+            alice,
+            bob,
+            100,
+            h,
+            100,
+            sig
+        );
     }
 
     function test_unpause_AllowsEscrowCreation() public {
@@ -1437,7 +2337,14 @@ contract RegistryAndVaultTest is Test {
         vm.stopPrank();
 
         bytes32 h = sha256("x");
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
         registry.createEscrow(address(token1), bob, alice, 10, h, 120);
@@ -1448,21 +2355,42 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitment = sha256("hello");
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
 
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
-        registry.createEscrow(address(token1), bob, alice, 10, commitmentHash, 120);
+        registry.createEscrow(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            120
+        );
 
         vm.prank(bob);
         registry.pause();
 
-        EscrowVault(escrow).claim(abi.encode(commitment));
+        EscrowVault(escrow).claim(commitment);
         assertEq(token1.balanceOf(alice), 120);
     }
 
     function test_pause_DoesNotBlockRefund() public {
         bytes32 h = sha256(abi.encode(0x1232));
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, h, 120);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            120
+        );
 
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, 120));
@@ -1477,7 +2405,10 @@ contract RegistryAndVaultTest is Test {
     }
 
     // ========== incrementNonce ==========
+    // NOTE: Nonce functionality has been removed from EscrowFactory
+    // These tests are commented out until/unless nonce support is re-added
 
+    /*
     function test_incrementNonce_BumpsNonce() public {
         assertEq(registry.s_nonces(alice), 0);
 
@@ -1510,6 +2441,7 @@ contract RegistryAndVaultTest is Test {
         vm.expectRevert(EscrowFactory.EscrowFactory__InvalidSignature.selector);
         registry.createEscrowSigned(address(permitToken), alice, bob, 100, commitmentHash, amount, signature);
     }
+    */
 
     // ========== Batch escrow creation ==========
 
@@ -1519,8 +2451,22 @@ contract RegistryAndVaultTest is Test {
         uint256 amount = 500;
 
         // Predict addresses
-        address v1 = registry.getEscrowAddress(address(token1), bob, alice, 10, h1, amount);
-        address v2 = registry.getEscrowAddress(address(token1), bob, charlie, 20, h2, amount);
+        address v1 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h1,
+            amount
+        );
+        address v2 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            charlie,
+            20,
+            h2,
+            amount
+        );
 
         // Pre-fund both escrows
         vm.startPrank(bob);
@@ -1529,9 +2475,24 @@ contract RegistryAndVaultTest is Test {
         vm.stopPrank();
 
         // Build batch params
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](2);
-        params[0] = EscrowFactory.EscrowParams(address(token1), bob, alice, 10, h1, amount);
-        params[1] = EscrowFactory.EscrowParams(address(token1), bob, charlie, 20, h2, amount);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](2);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h1,
+            amount
+        );
+        params[1] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            charlie,
+            20,
+            h2,
+            amount
+        );
 
         address[] memory escrows = registry.createEscrowBatch(params);
 
@@ -1545,7 +2506,8 @@ contract RegistryAndVaultTest is Test {
     }
 
     function test_createEscrowBatch_RevertsOnEmptyArray() public {
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](0);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](0);
 
         vm.expectRevert(EscrowFactory.EscrowFactory__EmptyBatch.selector);
         registry.createEscrowBatch(params);
@@ -1557,15 +2519,39 @@ contract RegistryAndVaultTest is Test {
         uint256 amount = 500;
 
         // Only fund the first escrow, not the second
-        address v1 = registry.getEscrowAddress(address(token1), bob, alice, 10, h1, amount);
+        address v1 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h1,
+            amount
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(v1, amount));
 
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](2);
-        params[0] = EscrowFactory.EscrowParams(address(token1), bob, alice, 10, h1, amount);
-        params[1] = EscrowFactory.EscrowParams(address(token1), bob, charlie, 20, h2, amount);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](2);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h1,
+            amount
+        );
+        params[1] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            charlie,
+            20,
+            h2,
+            amount
+        );
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector
+        );
         registry.createEscrowBatch(params);
 
         // First escrow should NOT be deployed since entire tx reverted
@@ -1576,8 +2562,16 @@ contract RegistryAndVaultTest is Test {
         vm.prank(bob);
         registry.pause();
 
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](1);
-        params[0] = EscrowFactory.EscrowParams(address(token1), bob, alice, 10, sha256("x"), 100);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](1);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            alice,
+            10,
+            sha256("x"),
+            100
+        );
 
         vm.expectRevert();
         registry.createEscrowBatch(params);
@@ -1588,16 +2582,31 @@ contract RegistryAndVaultTest is Test {
         bytes32 commitmentHash = sha256(abi.encodePacked(commitment));
         uint256 amount = 1000;
 
-        address v1 = registry.getEscrowAddress(address(token1), bob, alice, 10, commitmentHash, amount);
+        address v1 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            amount
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(v1, amount));
 
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](1);
-        params[0] = EscrowFactory.EscrowParams(address(token1), bob, alice, 10, commitmentHash, amount);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](1);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            alice,
+            10,
+            commitmentHash,
+            amount
+        );
 
         address[] memory escrows = registry.createEscrowBatch(params);
 
-        EscrowVault(escrows[0]).claim(abi.encode(commitment));
+        EscrowVault(escrows[0]).claim(commitment);
         assertEq(token1.balanceOf(alice), amount);
     }
 
@@ -1611,21 +2620,50 @@ contract RegistryAndVaultTest is Test {
         bytes32 h2 = sha256("batch-native-2");
         uint256 amount = 1 ether;
 
-        address v1 = registry.getEscrowAddress(nativeToken, alice, bob, 10, h1, amount);
-        address v2 = registry.getEscrowAddress(nativeToken, alice, charlie, 20, h2, amount);
+        address v1 = registry.getEscrowAddress(
+            nativeToken,
+            alice,
+            bob,
+            10,
+            h1,
+            amount
+        );
+        address v2 = registry.getEscrowAddress(
+            nativeToken,
+            alice,
+            charlie,
+            20,
+            h2,
+            amount
+        );
 
         // Pre-fund both predicted addresses with ETH
         vm.deal(alice, amount * 2);
         vm.startPrank(alice);
-        (bool s1,) = payable(v1).call{value: amount}("");
+        (bool s1, ) = payable(v1).call{value: amount}("");
         assertTrue(s1);
-        (bool s2,) = payable(v2).call{value: amount}("");
+        (bool s2, ) = payable(v2).call{value: amount}("");
         assertTrue(s2);
         vm.stopPrank();
 
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](2);
-        params[0] = EscrowFactory.EscrowParams(nativeToken, alice, bob, 10, h1, amount);
-        params[1] = EscrowFactory.EscrowParams(nativeToken, alice, charlie, 20, h2, amount);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](2);
+        params[0] = EscrowFactory.EscrowParams(
+            nativeToken,
+            alice,
+            bob,
+            10,
+            h1,
+            amount
+        );
+        params[1] = EscrowFactory.EscrowParams(
+            nativeToken,
+            alice,
+            charlie,
+            20,
+            h2,
+            amount
+        );
 
         address[] memory escrows = registry.createEscrowBatch(params);
 
@@ -1640,17 +2678,46 @@ contract RegistryAndVaultTest is Test {
         bytes32 h2 = sha256("batch-event-2");
         uint256 amount = 200;
 
-        address v1 = registry.getEscrowAddress(address(token1), bob, alice, 10, h1, amount);
-        address v2 = registry.getEscrowAddress(address(token1), bob, charlie, 20, h2, amount);
+        address v1 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h1,
+            amount
+        );
+        address v2 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            charlie,
+            20,
+            h2,
+            amount
+        );
 
         vm.startPrank(bob);
         assertTrue(token1.transfer(v1, amount));
         assertTrue(token1.transfer(v2, amount));
         vm.stopPrank();
 
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](2);
-        params[0] = EscrowFactory.EscrowParams(address(token1), bob, alice, 10, h1, amount);
-        params[1] = EscrowFactory.EscrowParams(address(token1), bob, charlie, 20, h2, amount);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](2);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h1,
+            amount
+        );
+        params[1] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            charlie,
+            20,
+            h2,
+            amount
+        );
 
         vm.expectEmit(true, true, true, true);
         emit EscrowCreated(v1, bob, address(token1), alice, h1, 10, amount);
@@ -1660,11 +2727,21 @@ contract RegistryAndVaultTest is Test {
     }
 
     function test_createEscrowBatch_RevertsOnInvalidParams() public {
-        EscrowFactory.EscrowParams[] memory params = new EscrowFactory.EscrowParams[](1);
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](1);
         // creator == recipient
-        params[0] = EscrowFactory.EscrowParams(address(token1), bob, bob, 10, sha256("x"), 100);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            bob,
+            10,
+            sha256("x"),
+            100
+        );
 
-        vm.expectRevert(EscrowFactory.EscrowFactory__InvalidAddressParameters.selector);
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InvalidAddressParameters.selector
+        );
         registry.createEscrowBatch(params);
     }
 
@@ -1673,12 +2750,169 @@ contract RegistryAndVaultTest is Test {
     function test_createEscrow_EmitsRichEscrowCreatedEvent() public {
         bytes32 h = sha256("x");
         uint256 amount = 120;
-        address escrow = registry.getEscrowAddress(address(token1), bob, alice, 10, h, amount);
+        address escrow = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            amount
+        );
         vm.prank(bob);
         assertTrue(token1.transfer(escrow, amount));
 
         vm.expectEmit(true, true, true, true);
         emit EscrowCreated(escrow, bob, address(token1), alice, h, 10, amount);
         registry.createEscrow(address(token1), bob, alice, 10, h, amount);
+    }
+
+    // ========== createEscrowBatch uncovered branches ==========
+
+    /// @dev Covers branch: require(s_whitelistedTokens[p.token]) inside createEscrowBatch
+    function test_createEscrowBatch_RevertsOnNonWhitelistedToken() public {
+        ERC20Impl unlistedToken = new ERC20Impl("Unlisted", "UL", bob);
+
+        address v1 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            sha256("ok"),
+            100
+        );
+        vm.prank(bob);
+        assertTrue(token1.transfer(v1, 100));
+
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](2);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            alice,
+            10,
+            sha256("ok"),
+            100
+        );
+        // second entry uses a non-whitelisted token → should revert
+        params[1] = EscrowFactory.EscrowParams(
+            address(unlistedToken),
+            bob,
+            charlie,
+            10,
+            sha256("bad"),
+            100
+        );
+
+        vm.expectRevert(EscrowFactory.EscrowFactory__TokenNotAccepted.selector);
+        registry.createEscrowBatch(params);
+    }
+
+    /// @dev Covers branch: require(!s_deployedEscrows[addr]) inside createEscrowBatch
+    function test_createEscrowBatch_RevertsOnAlreadyDeployedEscrow() public {
+        bytes32 h = sha256("already-deployed");
+        uint256 amount = 100;
+
+        // First deploy it normally
+        address v1 = registry.getEscrowAddress(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            amount
+        );
+        vm.prank(bob);
+        assertTrue(token1.transfer(v1, amount));
+        registry.createEscrow(address(token1), bob, alice, 10, h, amount);
+        assertTrue(registry.s_deployedEscrows(v1));
+
+        // Now try to batch-create the same escrow (already deployed)
+        vm.prank(bob);
+        assertTrue(token1.transfer(v1, amount)); // pre-fund again (irrelevant, will revert)
+
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](1);
+        params[0] = EscrowFactory.EscrowParams(
+            address(token1),
+            bob,
+            alice,
+            10,
+            h,
+            amount
+        );
+
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__EscrowAlreadyDeployed.selector
+        );
+        registry.createEscrowBatch(params);
+    }
+
+    /// @dev Covers branch: require(address(addr).balance >= p.amount) — native ETH path inside createEscrowBatch
+    function test_createEscrowBatch_RevertsOnInsufficientNativeETH() public {
+        address nativeToken = registry.NATIVE_TOKEN();
+        vm.prank(bob);
+        registry.whitelistToken(nativeToken);
+
+        bytes32 h = sha256("batch-native-insufficient");
+        uint256 amount = 1 ether;
+
+        // deliberately do NOT pre-fund the predicted address
+        EscrowFactory.EscrowParams[]
+            memory params = new EscrowFactory.EscrowParams[](1);
+        params[0] = EscrowFactory.EscrowParams(
+            nativeToken,
+            alice,
+            bob,
+            10,
+            h,
+            amount
+        );
+
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector
+        );
+        registry.createEscrowBatch(params);
+    }
+
+    /// @dev Covers branch: require(IERC20(token).balanceOf(addr) >= amount) in _createErc20EscrowFromCreator
+    ///      A fee-on-transfer token delivers only 90% of `amount` to the escrow address,
+    ///      so the post-transfer balance check fails.
+    function test_createEscrowSigned_RevertsOnFeeOnTransferToken() public {
+        // Transfer enough so alice can send `amount` in full (fee deducted from alice, not escrow)
+        // safeTransferFrom(alice, escrow, amount) → escrow receives amount*0.9 < amount → revert
+        uint256 amount = 900; // escrow will receive 810 (90%), which is < 900
+        vm.prank(bob);
+        // Give alice 1000 so she can afford the full `amount` debit (900 debit + 100 fee = 1000 total)
+        assertTrue(feeToken.transfer(alice, 1100)); // alice receives 990 after 10% fee
+
+        vm.prank(alice);
+        assertTrue(feeToken.approve(address(registry), amount));
+
+        bytes32 commitmentHash = sha256(abi.encodePacked("fee-token-test"));
+
+        bytes memory signature = _signCreateEscrow(
+            ALICE_PK,
+            address(feeToken),
+            alice,
+            bob,
+            10,
+            commitmentHash,
+            amount
+        );
+
+        // safeTransferFrom succeeds (alice has enough), but escrow only receives 810 < 900
+        // → require(IERC20(token).balanceOf(addr) >= amount) reverts
+        vm.expectRevert(
+            EscrowFactory.EscrowFactory__InsufficientFundsDeposited.selector
+        );
+        registry.createEscrowSigned(
+            address(feeToken),
+            alice,
+            bob,
+            10,
+            commitmentHash,
+            amount,
+            signature
+        );
     }
 }

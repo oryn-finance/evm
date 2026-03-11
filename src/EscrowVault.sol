@@ -67,7 +67,7 @@ contract EscrowVault is Initializable {
     /// @notice Emitted when assets are claimed by the recipient via valid commitment
     /// @param recipient Address that received the claimed assets
     /// @param commitment Preimage that satisfied the commitment hash
-    event Claimed(address indexed recipient, bytes commitment);
+    event Claimed(address indexed recipient, bytes32 commitment);
 
     /// @notice Emitted when assets are returned to creator after escrow expiry
     /// @param creator Address that receives the returned assets
@@ -102,17 +102,17 @@ contract EscrowVault is Initializable {
     /// @param _commitment The preimage that hashes to the stored commitmentHash
     /// @dev Supports both ERC20 tokens and native ETH
     /// @dev Reverts if commitment does not match or is invalid
-    function claim(bytes calldata _commitment) external {
+    function claim(bytes32 _commitment) external {
         require(!s_settled, EscrowVault__EscrowAlreadySettled());
 
         (address token,, address recipient,, bytes32 commitmentHash) = getEscrowParameters();
 
-        require(sha256(_commitment) == commitmentHash, EscrowVault__InvalidCommitment());
+        require(sha256(abi.encodePacked(_commitment)) == commitmentHash, EscrowVault__InvalidCommitment());
 
         s_settled = true;
 
         if (token == NATIVE_TOKEN) {
-            (bool success,) = recipient.call{value: address(this).balance, gas: 30000}("");
+            (bool success,) = recipient.call{value: address(this).balance, gas: 8000}("");
             require(success, EscrowVault__NativeTransferFailed());
         } else {
             IERC20(token).safeTransfer(recipient, IERC20(token).balanceOf(address(this)));
@@ -134,7 +134,7 @@ contract EscrowVault is Initializable {
         s_settled = true;
 
         if (token == NATIVE_TOKEN) {
-            (bool success,) = creator.call{value: address(this).balance, gas: 30000}("");
+            (bool success,) = creator.call{value: address(this).balance, gas: 8000}("");
             require(success, EscrowVault__NativeTransferFailed());
         } else {
             IERC20(token).safeTransfer(creator, IERC20(token).balanceOf(address(this)));

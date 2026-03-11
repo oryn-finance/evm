@@ -107,7 +107,7 @@ test/
   Escrow.t.sol             97 tests (unit + integration + fuzz)
 script/
   DeployRegistry.s.sol     Production deploy script
-  DeployMockTokens.s.sol   Testnet token deployment
+  DeployErc20Tokens.s.sol  ERC20 token deployment (USDC, WBTC)
 ```
 
 ## Dependencies

@@ -510,5 +510,14 @@ Features: relayer allowlisting, initial funding, home/remote deployment and regi
 
 ---
 
+## 11. ORYN Integration
+
+ORYN-specific wrappers, adapters, and escrow betterments are documented in a separate spec:
+
+→ **[ORYN_ICTT_INTEGRATION.md](./ORYN_ICTT_INTEGRATION.md)** — BridgeAdapter, TokenRegistry, sendAndCall receiver, escrow improvements, implementation order.
+
+
+---
+
 *Technical research document. Not financial or legal advice.*
 *March 2026 | Scope: Avalanche-Internal Interchain | ICM v1.7.5 / ICTT*

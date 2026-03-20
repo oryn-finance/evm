@@ -5,3 +5,27 @@ libs = ["lib"]
 optimizer = true
 optimizer_runs = 123432
 always_use_create_2_factory = true
+
+# ── ICTT profile (solc 0.8.30 for icm-services contracts) ──
+# Usage: FOUNDRY_PROFILE=ictt forge script ictt/script/Deploy*.s.sol ...
+[profile.ictt]
+src = "ictt/src"
+script = "ictt/script"
+test = "ictt/test"
+out = "out-ictt"
+libs = ["lib"]
+solc_version = "0.8.30"
+evm_version = "shanghai"
+optimizer = true
+optimizer_runs = 200
+always_use_create_2_factory = true
+remappings = [
+    "@openzeppelin/contracts@5.0.2/=lib/icm-services/lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/",
+    "@openzeppelin/contracts-upgradeable@5.0.2/=lib/icm-services/lib/openzeppelin-contracts-upgradeable/contracts/",
+    "@teleporter/=lib/icm-services/icm-contracts/avalanche/teleporter/",
+    "@subnet-evm/=lib/icm-services/icm-contracts/avalanche/subnet-evm/",
+    "@utilities/=lib/icm-services/icm-contracts/avalanche/utilities/",
+    "@ictt/=lib/icm-services/icm-contracts/avalanche/ictt/",
+    "@common/=lib/icm-services/icm-contracts/common/",
+    "forge-std/=lib/forge-std/src/",
+]

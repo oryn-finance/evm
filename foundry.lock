@@ -5,6 +5,9 @@
       "rev": "8e40513d678f392f398620b3ef2b418648b33e89"
     }
   },
+  "lib/icm-services": {
+    "rev": "0f3d9df7af720f92f567b129f27918c1b790de45"
+  },
   "lib/openzeppelin-contracts": {
     "tag": {
       "name": "v5.5.0",

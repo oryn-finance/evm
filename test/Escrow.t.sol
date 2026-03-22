@@ -1334,13 +1334,13 @@ contract RegistryAndVaultTest is Test {
 
         uint256 depositedAt = EscrowVault(escrow).s_depositedAt();
 
-        // Roll to exactly expiry boundary — should still revert (need >)
-        vm.roll(depositedAt + expiryBlocks);
+        // One block before expiry — should revert (>= semantics: need block.number >= depositedAt + expiryBlocks)
+        vm.roll(depositedAt + expiryBlocks - 1);
         vm.expectRevert(EscrowVault.EscrowVault__EscrowNotExpired.selector);
         EscrowVault(escrow).refund();
 
-        // Roll past expiry — should succeed
-        vm.roll(depositedAt + expiryBlocks + 1);
+        // At exactly expiry boundary — should succeed (>= means this block is eligible)
+        vm.roll(depositedAt + expiryBlocks);
         EscrowVault(escrow).refund();
     }
 

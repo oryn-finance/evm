@@ -162,8 +162,13 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
     //////////////////////////////////
     //////////////////////////////////
 
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
 
     function whitelistToken(address _tokenAddress) external onlyOwner {
         s_whitelistedTokens[_tokenAddress] = true;
@@ -177,11 +182,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
 
     /// @notice Creates a new pre-funded escrow vault
     /// @param p.l1Hop When true the vault enforces claimHop() instead of claim()
-    function createEscrow(EscrowParams calldata p)
-        external
-        whenNotPaused
-        returns (address)
-    {
+    function createEscrow(EscrowParams calldata p) external whenNotPaused returns (address) {
         _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
         require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
         if (p.l1Hop) require(p.token != NATIVE_TOKEN, AvalancheEscrowFactory__NativeNotSupportedForHop());
@@ -227,7 +228,9 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
             if (p.token == NATIVE_TOKEN) {
                 require(address(addr).balance >= p.amount, AvalancheEscrowFactory__InsufficientFundsDeposited());
             } else {
-                require(IERC20(p.token).balanceOf(addr) >= p.amount, AvalancheEscrowFactory__InsufficientFundsDeposited());
+                require(
+                    IERC20(p.token).balanceOf(addr) >= p.amount, AvalancheEscrowFactory__InsufficientFundsDeposited()
+                );
             }
 
             _deployEscrow(encodedArgs, salt, p.amount);
@@ -236,12 +239,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
     }
 
     /// @notice Creates a native token escrow in one transaction (p.l1Hop must be false)
-    function createEscrowNative(EscrowParams calldata p)
-        external
-        payable
-        whenNotPaused
-        returns (address)
-    {
+    function createEscrowNative(EscrowParams calldata p) external payable whenNotPaused returns (address) {
         _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
         require(p.token == NATIVE_TOKEN, AvalancheEscrowFactory__OnlyNativeTokenAllowed());
         require(!p.l1Hop, AvalancheEscrowFactory__NativeNotSupportedForHop());
@@ -292,11 +290,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
     }
 
     /// @notice Predicts the deterministic vault address without deploying it
-    function getEscrowAddress(EscrowParams calldata p)
-        external
-        view
-        returns (address)
-    {
+    function getEscrowAddress(EscrowParams calldata p) external view returns (address) {
         _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
         require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
 
@@ -326,7 +320,13 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
         bytes32 structHash = keccak256(
             abi.encode(
                 CREATE_ESCROW_TYPEHASH,
-                p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash, p.amount, p.l1Hop
+                p.token,
+                p.creator,
+                p.recipient,
+                p.expiryBlocks,
+                p.commitmentHash,
+                p.amount,
+                p.l1Hop
             )
         );
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);

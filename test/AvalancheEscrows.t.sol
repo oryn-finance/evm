@@ -91,7 +91,9 @@ contract AvalancheEscrowsTest is Test {
 
     // Mirror vault events
     event Claimed(address indexed recipient, bytes32 commitment);
-    event ClaimedHop(bytes32 commitment, bytes32 indexed destBlockchainId, address indexed hopRecipient, uint256 amount);
+    event ClaimedHop(
+        bytes32 commitment, bytes32 indexed destBlockchainId, address indexed hopRecipient, uint256 amount
+    );
     event Refunded(address indexed creator, bytes32 commitmentHash);
 
     AvalancheEscrowFactory factory;
@@ -233,7 +235,7 @@ contract AvalancheEscrowsTest is Test {
 
         assertTrue(factory.s_deployedEscrows(vaultAddr));
         AvalancheEscrowVault vault = AvalancheEscrowVault(vaultAddr);
-        (,,,, , bool l1Hop) = vault.getEscrowParameters();
+        (,,,,, bool l1Hop) = vault.getEscrowParameters();
         assertFalse(l1Hop);
     }
 
@@ -255,14 +257,16 @@ contract AvalancheEscrowsTest is Test {
             abi.encodePacked(
                 "\x19\x01",
                 permitToken.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(
-                    keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
-                    alice,
-                    address(factory),
-                    AMOUNT,
-                    permitToken.nonces(alice),
-                    deadline
-                ))
+                keccak256(
+                    abi.encode(
+                        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                        alice,
+                        address(factory),
+                        AMOUNT,
+                        permitToken.nonces(alice),
+                        deadline
+                    )
+                )
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, permitHash);
@@ -283,7 +287,13 @@ contract AvalancheEscrowsTest is Test {
         bytes32 structHash = keccak256(
             abi.encode(
                 factory.CREATE_ESCROW_TYPEHASH(),
-                p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash, p.amount, p.l1Hop
+                p.token,
+                p.creator,
+                p.recipient,
+                p.expiryBlocks,
+                p.commitmentHash,
+                p.amount,
+                p.l1Hop
             )
         );
         bytes32 digest = MessageHashUtils.toTypedDataHash(_factoryDomainSeparator(), structHash);
@@ -309,7 +319,7 @@ contract AvalancheEscrowsTest is Test {
         factory.createEscrow(_p(true));
 
         AvalancheEscrowVault vault = AvalancheEscrowVault(vaultAddr);
-        (,,,, , bool l1Hop) = vault.getEscrowParameters();
+        (,,,,, bool l1Hop) = vault.getEscrowParameters();
         assertTrue(l1Hop);
     }
 
@@ -397,8 +407,8 @@ contract AvalancheEscrowsTest is Test {
 
         assertEq(vaults[0], vault1Addr);
         assertEq(vaults[1], vault2Addr);
-        (,,,, , bool hop0) = AvalancheEscrowVault(vaults[0]).getEscrowParameters();
-        (,,,, , bool hop1) = AvalancheEscrowVault(vaults[1]).getEscrowParameters();
+        (,,,,, bool hop0) = AvalancheEscrowVault(vaults[0]).getEscrowParameters();
+        (,,,,, bool hop1) = AvalancheEscrowVault(vaults[1]).getEscrowParameters();
         assertFalse(hop0);
         assertTrue(hop1);
     }
@@ -523,8 +533,15 @@ contract AvalancheEscrowsTest is Test {
         // Sign with alice's key (creator) instead of bob's (recipient) — should fail
         bytes32 hash = keccak256(
             abi.encode(
-                vault.HOP_AUTHORIZATION_TYPEHASH(), block.chainid, address(vault), COMMITMENT_HASH,
-                hd.bridgeFactory, hd.destBlockchainId, hd.recipient, hd.primaryFeeToken, hd.primaryRelayerFee
+                vault.HOP_AUTHORIZATION_TYPEHASH(),
+                block.chainid,
+                address(vault),
+                COMMITMENT_HASH,
+                hd.bridgeFactory,
+                hd.destBlockchainId,
+                hd.recipient,
+                hd.primaryFeeToken,
+                hd.primaryRelayerFee
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, MessageHashUtils.toEthSignedMessageHash(hash));
@@ -738,24 +755,28 @@ contract AvalancheEscrowsTest is Test {
 
     function testFuzz_l1Hop_differentSalt(bytes32 commitmentHash) public view {
         vm.assume(commitmentHash != bytes32(0));
-        address hopAddr = factory.getEscrowAddress(AvalancheEscrowFactory.EscrowParams({
-            token: address(token),
-            creator: alice,
-            recipient: bob,
-            expiryBlocks: EXPIRY,
-            commitmentHash: commitmentHash,
-            amount: AMOUNT,
-            l1Hop: true
-        }));
-        address noHopAddr = factory.getEscrowAddress(AvalancheEscrowFactory.EscrowParams({
-            token: address(token),
-            creator: alice,
-            recipient: bob,
-            expiryBlocks: EXPIRY,
-            commitmentHash: commitmentHash,
-            amount: AMOUNT,
-            l1Hop: false
-        }));
+        address hopAddr = factory.getEscrowAddress(
+            AvalancheEscrowFactory.EscrowParams({
+                token: address(token),
+                creator: alice,
+                recipient: bob,
+                expiryBlocks: EXPIRY,
+                commitmentHash: commitmentHash,
+                amount: AMOUNT,
+                l1Hop: true
+            })
+        );
+        address noHopAddr = factory.getEscrowAddress(
+            AvalancheEscrowFactory.EscrowParams({
+                token: address(token),
+                creator: alice,
+                recipient: bob,
+                expiryBlocks: EXPIRY,
+                commitmentHash: commitmentHash,
+                amount: AMOUNT,
+                l1Hop: false
+            })
+        );
         assertTrue(hopAddr != noHopAddr);
     }
 }

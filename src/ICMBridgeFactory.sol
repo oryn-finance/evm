@@ -254,9 +254,7 @@ contract ICMBridgeFactory is Ownable, Pausable {
     ) external whenNotPaused {
         require(amount > 0, ICMBridgeFactory__ZeroAmount());
         require(recipient != address(0), ICMBridgeFactory__ZeroAddress());
-        require(
-            primaryRelayerFee == 0 || primaryFeeToken != address(0), ICMBridgeFactory__InvalidFeeParameters()
-        );
+        require(primaryRelayerFee == 0 || primaryFeeToken != address(0), ICMBridgeFactory__InvalidFeeParameters());
 
         BridgeRoute memory route = s_routes[token][destBlockchainId];
         require(route.active, ICMBridgeFactory__RouteNotFound());
@@ -279,19 +277,20 @@ contract ICMBridgeFactory is Ownable, Pausable {
         }
 
         // ── Dispatch ICM message ────────────────────────────────────────────
-        ITokenTransferrer(route.tokenTransferrer).send(
-            SendTokensInput({
-                destinationBlockchainID: destBlockchainId,
-                destinationTokenTransferrerAddress: route.destTransferrer,
-                recipient: recipient,
-                primaryFeeTokenAddress: primaryFeeToken,
-                primaryRelayerFee: primaryRelayerFee,
-                secondaryRelayerFee: 0,
-                requiredGasLimit: route.requiredGasLimit,
-                multiHopFallback: address(0)
-            }),
-            amount
-        );
+        ITokenTransferrer(route.tokenTransferrer)
+            .send(
+                SendTokensInput({
+                    destinationBlockchainID: destBlockchainId,
+                    destinationTokenTransferrerAddress: route.destTransferrer,
+                    recipient: recipient,
+                    primaryFeeTokenAddress: primaryFeeToken,
+                    primaryRelayerFee: primaryRelayerFee,
+                    secondaryRelayerFee: 0,
+                    requiredGasLimit: route.requiredGasLimit,
+                    multiHopFallback: address(0)
+                }),
+                amount
+            );
 
         emit BridgeSent(token, destBlockchainId, msg.sender, recipient, amount, primaryRelayerFee);
     }

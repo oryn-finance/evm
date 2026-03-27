@@ -136,10 +136,7 @@ contract AvalancheEscrowVault is Initializable {
     /// @param hopRecipient     Address on the destination chain receiving the tokens
     /// @param amount           Net token amount bridged
     event ClaimedHop(
-        bytes32 commitment,
-        bytes32 indexed destBlockchainId,
-        address indexed hopRecipient,
-        uint256 amount
+        bytes32 commitment, bytes32 indexed destBlockchainId, address indexed hopRecipient, uint256 amount
     );
 
     /// @notice Emitted when assets are returned to creator after expiry
@@ -228,14 +225,15 @@ contract AvalancheEscrowVault is Initializable {
         // ── Approve and dispatch via ICMBridgeFactory ────────────────────────
         IERC20(token).forceApprove(_hopData.bridgeFactory, vaultBalance);
 
-        IICMBridgeFactory(_hopData.bridgeFactory).bridge(
-            token,
-            bridgeAmount,
-            _hopData.destBlockchainId,
-            _hopData.recipient,
-            _hopData.primaryFeeToken,
-            _hopData.primaryRelayerFee
-        );
+        IICMBridgeFactory(_hopData.bridgeFactory)
+            .bridge(
+                token,
+                bridgeAmount,
+                _hopData.destBlockchainId,
+                _hopData.recipient,
+                _hopData.primaryFeeToken,
+                _hopData.primaryRelayerFee
+            );
 
         emit ClaimedHop(_commitment, _hopData.destBlockchainId, _hopData.recipient, bridgeAmount);
     }
@@ -268,7 +266,14 @@ contract AvalancheEscrowVault is Initializable {
     function getEscrowParameters()
         public
         view
-        returns (address token, address creator, address recipient, uint256 expiryBlocks, bytes32 commitmentHash, bool l1Hop)
+        returns (
+            address token,
+            address creator,
+            address recipient,
+            uint256 expiryBlocks,
+            bytes32 commitmentHash,
+            bool l1Hop
+        )
     {
         bytes memory args = address(this).fetchCloneArgs();
         return abi.decode(args, (address, address, address, uint256, bytes32, bool));

@@ -1,14 +1,15 @@
 # Compiler files
 cache/
 out/
+out-ictt/
 
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
 /broadcast/**/dry-run/
 
-# Docs
-docs/
+# Forge docs (auto-generated)
+docs/book/
 
 # Dotenv file
 .env

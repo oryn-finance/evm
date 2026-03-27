@@ -97,18 +97,40 @@ forge script script/DeployRegistry.s.sol --sig "run(address)" <OWNER_ADDRESS> \
   --rpc-url <RPC_URL> --broadcast --verify
 ```
 
+## ICTT Integration
+
+This repo includes [ICTT (Interchain Token Transfer)](https://github.com/ava-labs/icm-services) contracts via git submodule for bridging ERC20 tokens across Avalanche L1s. Parameterized deploy scripts let you bridge any token by setting env vars.
+
+See **[`docs/DEPLOY.md`](docs/DEPLOY.md)** for the full end-to-end deployment guide (Teleporter → ICTT → Escrow).
+
+```bash
+# Build ICTT scripts (separate Foundry profile, solc 0.8.30)
+FOUNDRY_PROFILE=ictt forge build
+```
+
 ## Project Structure
 
 ```
-src/
-  EscrowFactory.sol        Factory — escrow creation, token whitelist, signature verification
-  EscrowVault.sol          Escrow — claim, refund, immutable clone args
+src/                                  Escrow contracts (solc 0.8.28)
+  EscrowFactory.sol                   Factory — escrow creation, token whitelist, signatures
+  EscrowVault.sol                     Escrow — claim, refund, immutable clone args
 test/
-  Escrow.t.sol             97 tests (unit + integration + fuzz)
-script/
-  DeployRegistry.s.sol     Deploy EscrowFactory
-  DeployErc20Tokens.s.sol  Deploy USDC and WBTC ERC20 tokens
-  WhitelistTokens.s.sol    Whitelist a token on an existing factory (run per token)
+  Escrow.t.sol                        97 tests (unit + integration + fuzz)
+script/                               Escrow deploy scripts
+  DeployRegistry.s.sol                Deploy EscrowFactory
+  DeployErc20Tokens.s.sol             Deploy USDC and WBTC ERC20 tokens
+  WhitelistTokens.s.sol               Whitelist a token on an existing factory
+ictt/                                 ICTT contracts & scripts (solc 0.8.30)
+  src/BridgeableERC20.sol             Minimal ERC20 for ICTT bridging
+  script/DeployBridgeableERC20.s.sol  Step 1 — deploy token on home chain
+  script/DeployERC20TokenHome.s.sol   Step 2 — deploy TokenHome on home chain
+  script/DeployERC20TokenRemote.s.sol Step 3 — deploy TokenRemote on remote chain
+  script/RegisterRemoteWithHome.s.sol Step 4 — register remote with home via ICM
+lib/
+  icm-services/                       Submodule — ICTT core, Teleporter, deploy scripts
+  forge-std/
+  openzeppelin-contracts/
+  openzeppelin-contracts-upgradeable/
 ```
 
 ## Dependencies
@@ -118,6 +140,7 @@ script/
 | [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts) | 5.x | `Ownable`, `SafeERC20`, `ECDSA`, `EIP712`, `Clones` |
 | [OpenZeppelin Contracts Upgradeable](https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable) | 5.x | `Initializable` |
 | [Forge Std](https://github.com/foundry-rs/forge-std) | Latest | Test framework |
+| [ICM Services](https://github.com/ava-labs/icm-services) | Latest | ICTT (TokenHome, TokenRemote), Teleporter, Registry |
 
 ## License
 

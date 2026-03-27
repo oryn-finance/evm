@@ -1,5 +1,7 @@
 # Deployment
 
+> **Full end-to-end guide (ICTT + Escrow):** See [`docs/DEPLOY.md`](docs/DEPLOY.md) for the complete walkthrough covering Teleporter infra, ICTT token bridge, and escrow deployment.
+
 This document describes how to deploy the Oryn Escrow contracts (EscrowFactory and optional ERC20 tokens) to any EVM chain using Foundry.
 
 ---

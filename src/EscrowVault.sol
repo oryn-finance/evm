@@ -129,7 +129,9 @@ contract EscrowVault is Initializable {
 
         (address token, address creator,, uint256 expiryBlocks, bytes32 commitmentHash) = getEscrowParameters();
 
-        require(block.number > s_depositedAt + expiryBlocks, EscrowVault__EscrowNotExpired());
+        // expiryBlocks is the number of blocks *after initialization* the escrow remains refundable.
+        // Using >= ensures `expiryBlocks=1` allows refund in the very next mined block.
+        require(block.number >= s_depositedAt + expiryBlocks, EscrowVault__EscrowNotExpired());
 
         s_settled = true;
 

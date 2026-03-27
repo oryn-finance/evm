@@ -30,8 +30,8 @@ import {IICMBridgeFactory} from "../interfaces/IICMBridgeFactory.sol";
 ///           claim(preimage) → transfers tokens to recipient on THIS chain
 ///
 ///         l1Hop = true  — cross-chain HTLC
-///           claimHop(preimage, creatorSig, hopData) →
-///             verifies preimage + creator signature over hopData →
+///           claimHop(preimage, recipientSig, hopData) →
+///             verifies preimage + recipient signature over hopData →
 ///             calls ICMBridgeFactory.bridge() → tokens locked in TokenHome →
 ///             ICM message → TokenRemote mints to hopData.recipient on destination L1
 ///
@@ -63,7 +63,7 @@ contract AvalancheEscrowVault is Initializable {
     error AvalancheEscrowVault__IsHopEscrow();
     // 0xbecd325b — claimHop() called on a non-hop vault; use claim() instead
     error AvalancheEscrowVault__NotHopEscrow();
-    // 0xbab3b546 — creator's signature over HopData is invalid or from wrong signer
+    // 0xbab3b546 — recipient's signature over HopData is invalid or from wrong signer
     error AvalancheEscrowVault__InvalidHopSignature();
     // 0x97c8dc41 — separate fee token not supported; use address(0) or the bridge token
     error AvalancheEscrowVault__UnsupportedFeeToken();
@@ -94,7 +94,7 @@ contract AvalancheEscrowVault is Initializable {
     //////////////////////////////////
     //////////////////////////////////
 
-    /// @notice Parameters for the cross-chain hop, signed by the creator and passed at claim time
+    /// @notice Parameters for the cross-chain hop, signed by the recipient (redeemer) and passed at claim time
     /// @param bridgeFactory     ICMBridgeFactory on this chain
     /// @param destBlockchainId  Avalanche destination blockchain ID (bytes32)
     /// @param recipient         Address on the destination L1 that receives the bridged tokens
@@ -186,7 +186,7 @@ contract AvalancheEscrowVault is Initializable {
 
     /// @notice Claim and bridge tokens to a destination L1 via ICMBridgeFactory (l1Hop must be true)
     /// @param _commitment Preimage whose SHA-256 equals the stored commitmentHash
-    /// @param _signature  Creator's EIP-191 signature over HopAuthorization(vault, commitmentHash, hopData...)
+    /// @param _signature  Recipient's EIP-191 signature over HopAuthorization(vault, commitmentHash, hopData...)
     /// @param _hopData    Destination routing: bridgeFactory, destChain, recipient on L1, fee config
     /// @dev Only ERC20 tokens are supported for hop escrows (native token cannot be bridged via ICTT ERC20 path)
     /// @dev If primaryFeeToken == token: vault approves (balance) to factory; factory deducts fee
@@ -195,13 +195,15 @@ contract AvalancheEscrowVault is Initializable {
     function claimHop(bytes32 _commitment, bytes calldata _signature, HopData calldata _hopData) external {
         require(!s_settled, AvalancheEscrowVault__EscrowAlreadySettled());
 
-        (address token, address creator,,, bytes32 commitmentHash, bool l1Hop) = getEscrowParameters();
+        (address token,, address recipient,, bytes32 commitmentHash, bool l1Hop) = getEscrowParameters();
 
         require(l1Hop, AvalancheEscrowVault__NotHopEscrow());
         require(sha256(abi.encodePacked(_commitment)) == commitmentHash, AvalancheEscrowVault__InvalidCommitment());
 
-        // ── Verify creator authorized this exact hop destination ────────────
-        _verifyHopSignature(creator, commitmentHash, _hopData, _signature);
+        // ── Verify recipient (redeemer) authorized this exact hop destination ──
+        // This prevents frontrunning: even if a bot extracts the secret from the
+        // mempool, they cannot redirect funds without the recipient's signature.
+        _verifyHopSignature(recipient, commitmentHash, _hopData, _signature);
 
         // ── Validate fee token: only bridge token or no fee supported ───────
         require(
@@ -276,12 +278,14 @@ contract AvalancheEscrowVault is Initializable {
     // Internal
     //////////////////////////////////////////////////////////////////////////
 
-    /// @notice Verifies that _signature is the creator's EIP-191 personal signature over
-    ///         the hop authorization hash. chainId and vault address are included directly
-    ///         in the hash to prevent cross-chain and cross-vault replay without the
-    ///         overhead of a full EIP-712 domain separator.
+    /// @notice Verifies that _signature is the recipient's (redeemer's) EIP-191 personal
+    ///         signature over the hop authorization hash. This ensures only the rightful
+    ///         redeemer can authorize the bridge destination, preventing frontrunning attacks
+    ///         where a bot extracts the secret from mempool and redirects funds.
+    ///         chainId and vault address are included in the hash to prevent cross-chain
+    ///         and cross-vault replay without EIP-712 domain infrastructure.
     function _verifyHopSignature(
-        address creator,
+        address recipient,
         bytes32 commitmentHash,
         HopData calldata _hopData,
         bytes calldata _signature
@@ -300,6 +304,6 @@ contract AvalancheEscrowVault is Initializable {
             )
         );
         address signer = ECDSA.recover(MessageHashUtils.toEthSignedMessageHash(hash), _signature);
-        require(signer == creator, AvalancheEscrowVault__InvalidHopSignature());
+        require(signer == recipient, AvalancheEscrowVault__InvalidHopSignature());
     }
 }

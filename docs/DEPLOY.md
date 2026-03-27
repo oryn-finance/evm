@@ -29,7 +29,7 @@ The repo has two Foundry profiles:
 
 | Profile | Solc | What it compiles |
 |---------|------|-----------------|
-| `default` | 0.8.28 | `src/` — EscrowFactory, EscrowVault |
+| `default` | 0.8.28 | `src/` — EscrowFactory, EscrowVault, AvalancheEscrowFactory, AvalancheEscrowVault, ICMBridgeFactory |
 | `ictt` | 0.8.30 | `ictt/` — BridgeableERC20, ICTT deploy scripts |
 
 ```bash
@@ -213,7 +213,9 @@ export REMOTE_TOKEN_DECIMALS=8
 
 ---
 
-## Phase 3 — Escrow System
+## Phase 3 — Escrow System (non-Avalanche chains)
+
+Deploy the **standard** EscrowFactory on chains that do **not** need ICTT bridging (e.g. Ethereum, Arbitrum, Base). For Avalanche C-chain and L1s, skip to [Phase 4](#phase-4--avalanche-escrow--ictt-bridge).
 
 ### 3.1 Deploy EscrowFactory
 
@@ -228,7 +230,7 @@ Save the address:
 export ESCROW_FACTORY=0x...  # from output
 ```
 
-Deploy on each chain where you need escrows (repeat with different `--rpc-url`).
+Deploy on each non-Avalanche chain where you need escrows (repeat with different `--rpc-url`).
 
 ### 3.2 Whitelist tokens
 
@@ -246,8 +248,6 @@ forge script script/WhitelistTokens.s.sol \
   --rpc-url $RPC_URL_HOME --broadcast --private-key $PRIVATE_KEY
 ```
 
-On remote chains, whitelist the **bridged** token addresses (from Step 2.3).
-
 ### 3.3 (Optional) Deploy test ERC20 tokens
 
 If you need USDC/WBTC test tokens on a non-Avalanche chain (e.g. Sepolia, Base Sepolia):
@@ -256,6 +256,174 @@ If you need USDC/WBTC test tokens on a non-Avalanche chain (e.g. Sepolia, Base S
 forge script script/DeployErc20Tokens.s.sol --sig "run(address)" $OWNER_ADDRESS \
   --rpc-url <RPC_URL> --broadcast --private-key $PRIVATE_KEY
 ```
+
+---
+
+## Phase 4 — Avalanche Escrow + ICTT Bridge
+
+Deploy the **Avalanche-specific** escrow and bridge contracts on the C-chain and each L1. These enable cross-chain escrow settlement via ICTT — tokens are locked/minted (or burned/unlocked) atomically on claim.
+
+> **Prerequisites:** Phase 1 (Teleporter) and Phase 2 (ICTT token bridge) must be complete before this phase. You need `TOKEN_HOME_ADDRESS`, `TOKEN_REMOTE_ADDRESS`, and the blockchain IDs for both chains.
+
+### How it works
+
+Two settlement flows enabled by the `l1Hop` flag:
+
+| Direction | Source chain | Dest chain | What happens on claim |
+|-----------|-------------|------------|----------------------|
+| **Forward** (ETH → L1) | Any chain | C-chain (`l1Hop=true`) | `claimHop()` → TokenHome **locks** → TokenRemote **mints** on L1 |
+| **Reverse** (L1 → ETH) | L1 (`l1Hop=true`) | Any chain | `claimHop()` → TokenRemote **burns** → TokenHome **unlocks** on C-chain |
+
+Both directions use the **same contracts** — `AvalancheEscrowFactory`, `AvalancheEscrowVault`, and `ICMBridgeFactory`. The only difference is which chain they're deployed on and which ICTT transferrer the route points to.
+
+### Environment variables
+
+In addition to the base variables (`PRIVATE_KEY`, `OWNER_ADDRESS`), set these:
+
+```bash
+# ── Chain RPCs ──
+export RPC_URL_CCHAIN=https://api.avax-test.network/ext/bc/C/rpc
+export RPC_URL_L1=https://subnets.avax.network/echo/testnet/rpc
+
+# ── From Phase 2 outputs ──
+export TOKEN_ADDRESS=0x...          # ERC20 token on C-chain (e.g. WBTC)
+export TOKEN_HOME_ADDRESS=0x...     # ERC20TokenHome on C-chain
+export TOKEN_REMOTE_ADDRESS=0x...   # ERC20TokenRemote on L1 (wrapped token)
+
+# ── Blockchain IDs (bytes32, 0x + 64 hex chars) ──
+# Get C-chain blockchain ID:
+#   cast call $TOKEN_HOME_ADDRESS "getBlockchainID()" --rpc-url $RPC_URL_CCHAIN
+export CCHAIN_BLOCKCHAIN_ID=0x...
+
+# Get L1 blockchain ID:
+#   cast call $TOKEN_REMOTE_ADDRESS "getBlockchainID()" --rpc-url $RPC_URL_L1
+export L1_BLOCKCHAIN_ID=0x...
+
+# ── Gas limit for ICM relayer delivery (250k is a safe default) ──
+export REQUIRED_GAS_LIMIT=250000
+```
+
+### 4.1 Deploy AvalancheEscrowFactory on C-chain
+
+```bash
+forge script script/DeployAvalancheEscrowFactory.s.sol \
+  --sig "run(address)" $OWNER_ADDRESS \
+  --rpc-url $RPC_URL_CCHAIN --broadcast --private-key $PRIVATE_KEY
+```
+
+Save the address:
+
+```bash
+export AVALANCHE_FACTORY_CCHAIN=0x...  # from output
+```
+
+### 4.2 Deploy ICMBridgeFactory on C-chain
+
+```bash
+forge script script/DeployICMBridgeFactory.s.sol \
+  --sig "run(address)" $OWNER_ADDRESS \
+  --rpc-url $RPC_URL_CCHAIN --broadcast --private-key $PRIVATE_KEY
+```
+
+Save the address:
+
+```bash
+export BRIDGE_FACTORY_CCHAIN=0x...  # from output
+```
+
+### 4.3 Register bridge route on C-chain (Forward: C-chain → L1)
+
+This tells ICMBridgeFactory how to bridge a token from C-chain to the L1. The route maps `(token, destBlockchainId)` to the TokenHome/TokenRemote pair.
+
+```bash
+forge script script/RegisterBridgeRoute.s.sol \
+  --sig "run(address,address,bytes32,address,address,uint256)" \
+  $BRIDGE_FACTORY_CCHAIN \
+  $TOKEN_ADDRESS \
+  $L1_BLOCKCHAIN_ID \
+  $TOKEN_HOME_ADDRESS \
+  $TOKEN_REMOTE_ADDRESS \
+  $REQUIRED_GAS_LIMIT \
+  --rpc-url $RPC_URL_CCHAIN --broadcast --private-key $PRIVATE_KEY
+```
+
+> Register one route per token per destination L1. To bridge USDC and WBTC to the same L1, run this step twice with different `TOKEN_ADDRESS`, `TOKEN_HOME_ADDRESS`, and `TOKEN_REMOTE_ADDRESS` values.
+
+### 4.4 Whitelist tokens on C-chain AvalancheEscrowFactory
+
+```bash
+cast send $AVALANCHE_FACTORY_CCHAIN "whitelistToken(address)" $TOKEN_ADDRESS \
+  --rpc-url $RPC_URL_CCHAIN --private-key $PRIVATE_KEY
+```
+
+### 4.5 Deploy AvalancheEscrowFactory on L1
+
+Same contract, deployed on the L1 — enables the **reverse flow** (L1 → C-chain burn & unlock).
+
+```bash
+forge script script/DeployAvalancheEscrowFactory.s.sol \
+  --sig "run(address)" $OWNER_ADDRESS \
+  --rpc-url $RPC_URL_L1 --broadcast --private-key $PRIVATE_KEY
+```
+
+Save the address:
+
+```bash
+export AVALANCHE_FACTORY_L1=0x...  # from output
+```
+
+### 4.6 Deploy ICMBridgeFactory on L1
+
+```bash
+forge script script/DeployICMBridgeFactory.s.sol \
+  --sig "run(address)" $OWNER_ADDRESS \
+  --rpc-url $RPC_URL_L1 --broadcast --private-key $PRIVATE_KEY
+```
+
+Save the address:
+
+```bash
+export BRIDGE_FACTORY_L1=0x...  # from output
+```
+
+### 4.7 Register bridge route on L1 (Reverse: L1 → C-chain)
+
+Note the **swapped** transferrer addresses — on the L1, `tokenTransferrer` is the TokenRemote (it calls `send()` to burn), and `destTransferrer` is the TokenHome (it unlocks on C-chain).
+
+```bash
+forge script script/RegisterBridgeRoute.s.sol \
+  --sig "run(address,address,bytes32,address,address,uint256)" \
+  $BRIDGE_FACTORY_L1 \
+  $TOKEN_REMOTE_ADDRESS \
+  $CCHAIN_BLOCKCHAIN_ID \
+  $TOKEN_REMOTE_ADDRESS \
+  $TOKEN_HOME_ADDRESS \
+  $REQUIRED_GAS_LIMIT \
+  --rpc-url $RPC_URL_L1 --broadcast --private-key $PRIVATE_KEY
+```
+
+> **Key difference from 4.3:** The first `TOKEN_REMOTE_ADDRESS` is the **token** being bridged (the wrapped ERC20 on L1). The second `TOKEN_REMOTE_ADDRESS` is the **tokenTransferrer** (same contract — it implements `ITokenTransferrer.send()` which burns and sends an ICM message). `TOKEN_HOME_ADDRESS` is the **destTransferrer** on C-chain that will unlock the original tokens.
+
+### 4.8 Whitelist wrapped token on L1 AvalancheEscrowFactory
+
+```bash
+cast send $AVALANCHE_FACTORY_L1 "whitelistToken(address)" $TOKEN_REMOTE_ADDRESS \
+  --rpc-url $RPC_URL_L1 --private-key $PRIVATE_KEY
+```
+
+### 4.9 Repeat for additional tokens
+
+To bridge another token (e.g. USDC in addition to WBTC), re-export the per-token env vars and repeat steps 4.3, 4.4, 4.7, and 4.8. The factories (4.1, 4.2, 4.5, 4.6) are deployed once per chain.
+
+### 4.10 Repeat for additional L1s
+
+To add another L1 (e.g. a second Avalanche L1):
+
+1. Complete Phase 2 for the new L1 (TokenHome already exists on C-chain; deploy a new TokenRemote on the new L1 and register it)
+2. Register a new route on C-chain ICMBridgeFactory (step 4.3) pointing to the new L1's blockchain ID and TokenRemote
+3. Deploy AvalancheEscrowFactory + ICMBridgeFactory on the new L1 (steps 4.5–4.6)
+4. Register the reverse route on the new L1's ICMBridgeFactory (step 4.7)
+5. Whitelist tokens on both factories (steps 4.4, 4.8)
 
 ---
 
@@ -362,10 +530,21 @@ Then run the relayer to deliver the message. Your recipient on Chain B receives 
 | 2.2 | ERC20TokenHome | A | `ictt` | `TOKEN_HOME_ADDRESS` |
 | 2.3 | ERC20TokenRemote | B | `ictt` | `TOKEN_REMOTE_ADDRESS` |
 | 2.4 | registerWithHome | B→A | `ictt` | — (relayer delivers) |
-| 3.1 | EscrowFactory | any | `default` | `ESCROW_FACTORY` |
-| 3.2 | Whitelist tokens | any | `default` | — |
+| 3.1 | EscrowFactory | non-Avalanche | `default` | `ESCROW_FACTORY` |
+| 3.2 | Whitelist tokens | non-Avalanche | `default` | — |
+| 4.1 | AvalancheEscrowFactory | C-chain | `default` | `AVALANCHE_FACTORY_CCHAIN` |
+| 4.2 | ICMBridgeFactory | C-chain | `default` | `BRIDGE_FACTORY_CCHAIN` |
+| 4.3 | Register route (forward) | C-chain | `default` | — |
+| 4.4 | Whitelist token | C-chain | `default` | — |
+| 4.5 | AvalancheEscrowFactory | L1 | `default` | `AVALANCHE_FACTORY_L1` |
+| 4.6 | ICMBridgeFactory | L1 | `default` | `BRIDGE_FACTORY_L1` |
+| 4.7 | Register route (reverse) | L1 | `default` | — |
+| 4.8 | Whitelist wrapped token | L1 | `default` | — |
 
-> Repeat Phase 2 (steps 2.1–2.4) for each token. Repeat Phase 3 for each chain that needs escrows.
+> - Repeat Phase 2 (steps 2.1–2.4) for each token.
+> - Repeat Phase 3 for each non-Avalanche chain that needs escrows.
+> - Repeat Phase 4 steps 4.3–4.4 and 4.7–4.8 for each token on Avalanche chains.
+> - Repeat Phase 4 steps 4.5–4.8 for each additional L1.
 
 ---
 
@@ -374,23 +553,35 @@ Then run the relayer to deliver the message. Your recipient on Chain B receives 
 ```
 evm_escrow/
 ├── src/                           # Escrow contracts (solc 0.8.28)
-│   ├── EscrowFactory.sol
-│   └── EscrowVault.sol
-├── script/                        # Escrow deploy scripts
-│   ├── DeployRegistry.s.sol
-│   ├── DeployErc20Tokens.s.sol
-│   ├── WhitelistTokens.s.sol
+│   ├── EscrowFactory.sol          # Standard HTLC escrow (non-Avalanche chains)
+│   ├── EscrowVault.sol            # Standard escrow vault implementation
+│   ├── AvalancheEscrows/          # Avalanche-specific escrow extensions
+│   │   ├── AvalancheEscrowFactory.sol  # Escrow factory with l1Hop support
+│   │   └── AvalancheEscrowVault.sol    # Vault with claimHop() for ICTT bridging
+│   ├── ICMBridgeFactory.sol       # ICTT bridge route registry + dispatcher
+│   └── interfaces/
+│       ├── IICTT.sol              # ITokenTransferrer + SendTokensInput
+│       └── IICMBridgeFactory.sol  # ICMBridgeFactory interface
+├── script/                        # Deploy scripts
+│   ├── DeployRegistry.s.sol                  # Phase 3: Standard EscrowFactory
+│   ├── DeployAvalancheEscrowFactory.s.sol    # Phase 4: AvalancheEscrowFactory
+│   ├── DeployICMBridgeFactory.s.sol          # Phase 4: ICMBridgeFactory
+│   ├── RegisterBridgeRoute.s.sol             # Phase 4: Register ICTT route
+│   ├── WhitelistTokens.s.sol                 # Phase 3/4: Whitelist token
+│   ├── DeployErc20Tokens.s.sol               # Optional: test ERC20s
 │   └── TestFullFlow.s.sol
 ├── test/
-│   └── Escrow.t.sol
+│   ├── Escrow.t.sol
+│   ├── AvalancheEscrows.t.sol
+│   └── ICMBridgeFactory.t.sol
 ├── ictt/                          # ICTT contracts & scripts (solc 0.8.30)
 │   ├── src/
 │   │   └── BridgeableERC20.sol
 │   └── script/
-│       ├── DeployBridgeableERC20.s.sol
-│       ├── DeployERC20TokenHome.s.sol
-│       ├── DeployERC20TokenRemote.s.sol
-│       └── RegisterRemoteWithHome.s.sol
+│       ├── DeployBridgeableERC20.s.sol       # Phase 2.1
+│       ├── DeployERC20TokenHome.s.sol        # Phase 2.2
+│       ├── DeployERC20TokenRemote.s.sol      # Phase 2.3
+│       └── RegisterRemoteWithHome.s.sol      # Phase 2.4
 ├── lib/
 │   ├── forge-std/
 │   ├── openzeppelin-contracts/
@@ -423,8 +614,17 @@ evm_escrow/
 If `--verify` fails during deployment, verify manually:
 
 ```bash
-# Escrow contracts
+# Standard EscrowFactory
 forge verify-contract <FACTORY_ADDRESS> src/EscrowFactory.sol:EscrowFactory \
+  --chain-id <CHAIN_ID> --etherscan-api-key <API_KEY>
+
+# AvalancheEscrowFactory
+forge verify-contract <FACTORY_ADDRESS> \
+  src/AvalancheEscrows/AvalancheEscrowFactory.sol:AvalancheEscrowFactory \
+  --chain-id <CHAIN_ID> --etherscan-api-key <API_KEY>
+
+# ICMBridgeFactory
+forge verify-contract <FACTORY_ADDRESS> src/ICMBridgeFactory.sol:ICMBridgeFactory \
   --chain-id <CHAIN_ID> --etherscan-api-key <API_KEY>
 
 # ICTT contracts

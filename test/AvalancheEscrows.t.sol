@@ -100,11 +100,14 @@ contract AvalancheEscrowsTest is Test {
     MockICMBridgeFactory mockBridge;
 
     address owner = makeAddr("owner");
-    address bob = makeAddr("bob");  // recipient on this chain
 
-    // alice has a known private key for permit / signed / hop-sig tests
+    // alice has a known private key for permit / signed tests (creator)
     uint256 constant ALICE_PK = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
     address alice;
+
+    // bob has a known private key for hop-sig tests (recipient / redeemer)
+    uint256 constant BOB_PK = 0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a;
+    address bob;
 
     // hop constants
     bytes32 constant L1_CHAIN_ID = bytes32(uint256(0xabc1230000000000000000000000000000000000000000000000000000000000));
@@ -118,6 +121,7 @@ contract AvalancheEscrowsTest is Test {
 
     function setUp() public {
         alice = vm.addr(ALICE_PK);
+        bob = vm.addr(BOB_PK);
 
         vm.prank(owner);
         factory = new AvalancheEscrowFactory(owner);
@@ -175,8 +179,9 @@ contract AvalancheEscrowsTest is Test {
         });
     }
 
-    /// @dev Signs HopData as alice (creator) using EIP-191 personal sign.
+    /// @dev Signs HopData as bob (recipient/redeemer) using EIP-191 personal sign.
     ///      chainId and vaultAddr are embedded in the hash for replay protection.
+    ///      The recipient signs to authorize the hop destination, preventing frontrunning.
     function _signHopData(address vaultAddr, AvalancheEscrowVault.HopData memory hd)
         internal
         view
@@ -195,7 +200,7 @@ contract AvalancheEscrowsTest is Test {
                 hd.primaryRelayerFee
             )
         );
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, MessageHashUtils.toEthSignedMessageHash(hash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(BOB_PK, MessageHashUtils.toEthSignedMessageHash(hash));
         sig = abi.encodePacked(r, s, v);
     }
 
@@ -515,14 +520,14 @@ contract AvalancheEscrowsTest is Test {
         AvalancheEscrowVault vault = _deployVault(true);
         AvalancheEscrowVault.HopData memory hd = _hopData();
 
-        // Sign with bob's key instead of alice's
-        bytes32 structHash = keccak256(
+        // Sign with alice's key (creator) instead of bob's (recipient) — should fail
+        bytes32 hash = keccak256(
             abi.encode(
-                vault.HOP_AUTHORIZATION_TYPEHASH(), address(vault), COMMITMENT_HASH,
+                vault.HOP_AUTHORIZATION_TYPEHASH(), block.chainid, address(vault), COMMITMENT_HASH,
                 hd.bridgeFactory, hd.destBlockchainId, hd.recipient, hd.primaryFeeToken, hd.primaryRelayerFee
             )
         );
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x1234, MessageHashUtils.toEthSignedMessageHash(structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, MessageHashUtils.toEthSignedMessageHash(hash));
         bytes memory sig = abi.encodePacked(r, s, v);
 
         vm.expectRevert(AvalancheEscrowVault.AvalancheEscrowVault__InvalidHopSignature.selector);

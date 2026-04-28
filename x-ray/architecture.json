@@ -1,0 +1,33 @@
+{
+  "title": "Oryn Escrow Architecture",
+  "nodes": [
+    {"id": "creator", "label": "Creator / Funder", "subtitle": "User", "type": "actor", "row": 0},
+    {"id": "owner", "label": "Owner", "subtitle": "Admin", "type": "actor", "row": 0},
+    {"id": "escrow_factory", "label": "EscrowFactory", "subtitle": "Standard factory", "type": "protocol", "row": 1},
+    {"id": "avalanche_factory", "label": "AvalancheEscrowFactory", "subtitle": "Hop factory", "type": "protocol", "row": 1},
+    {"id": "bridge_factory", "label": "ICMBridgeFactory", "subtitle": "Route registry", "type": "protocol", "row": 1},
+    {"id": "recipient", "label": "Recipient / Redeemer", "subtitle": "User", "type": "actor", "row": 1},
+    {"id": "escrow_vault", "label": "EscrowVault", "subtitle": "HTLC clone", "type": "protocol", "row": 2},
+    {"id": "avalanche_vault", "label": "AvalancheEscrowVault", "subtitle": "HTLC hop clone", "type": "protocol", "row": 2},
+    {"id": "tokens", "label": "ERC20 / Native", "subtitle": "Assets", "type": "external", "row": 2},
+    {"id": "ictt", "label": "ICTT TokenTransferrer", "subtitle": "Bridge endpoint", "type": "external", "row": 2},
+    {"id": "teleporter", "label": "Teleporter / ICM", "subtitle": "Messaging", "type": "external", "row": 3}
+  ],
+  "edges": [
+    {"from": "creator", "to": "escrow_factory", "label": "standard create"},
+    {"from": "creator", "to": "avalanche_factory", "label": "hop create"},
+    {"from": "owner", "to": "escrow_factory", "label": "token list"},
+    {"from": "owner", "to": "avalanche_factory", "label": "hop list"},
+    {"from": "owner", "to": "bridge_factory", "label": "route admin"},
+    {"from": "escrow_factory", "to": "escrow_vault", "label": "vault deploy"},
+    {"from": "avalanche_factory", "to": "avalanche_vault", "label": "hop deploy"},
+    {"from": "recipient", "to": "escrow_vault", "label": "secret claim"},
+    {"from": "recipient", "to": "avalanche_vault", "label": "hop claim"},
+    {"from": "avalanche_vault", "to": "bridge_factory", "label": "bridge call"},
+    {"from": "bridge_factory", "to": "ictt", "label": "send tokens"},
+    {"from": "ictt", "to": "teleporter", "label": "message relay"},
+    {"from": "escrow_vault", "to": "tokens", "label": "asset payout"},
+    {"from": "bridge_factory", "to": "tokens", "label": "token pull"}
+  ],
+  "groups": []
+}

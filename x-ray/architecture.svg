@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1731" height="645" viewBox="0 0 693 258" font-family="Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 8 6" refX="8" refY="3"
+      markerWidth="4" markerHeight="3" orient="auto">
+      <path d="M0.5,0.5 L7,3 L0.5,5.5" fill="none" stroke="#94A3B8"
+        stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+    </marker>
+    <filter id="shadow" x="-6%" y="-8%" width="112%" height="128%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="0.8"
+        flood-color="#000" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+  <rect width="693" height="258" fill="#F8F9FB" rx="3"/>
+  <text x="346" y="11" text-anchor="middle" font-size="6" font-weight="700" fill="#1E293B">Oryn Escrow Architecture</text>
+  <rect x="271" y="16" width="150" height="10" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="276" y="18.5" width="5" height="5" rx="2.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <text x="284" y="22.5" font-size="3.5" fill="#1E293B">Actor</text>
+  <rect x="316" y="18.5" width="5" height="5" rx="1.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="317" y="19.5" width="0.8" height="3" rx="0.4" fill="#3B82F6"/>
+  <text x="324" y="22.5" font-size="3.5" fill="#1E293B">Protocol</text>
+  <rect x="364" y="18.5" width="5" height="5" rx="1.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="365" y="19.5" width="0.8" height="3" rx="0.4" fill="#F59E0B"/>
+  <text x="372" y="22.5" font-size="3.5" fill="#1E293B">External</text>
+  <path d="M78.4,46.0 C78.4,70.0 88.0,70.0 88.0,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M78.4,46.0 C78.4,70.0 214.0,70.0 214.0,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M176.8,46.0 C176.8,70.0 88.0,70.0 88.0,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M176.8,46.0 C176.8,70.0 214.0,70.0 214.0,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M176.8,46.0 C176.8,70.0 362.5,70.0 362.5,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M88.0,114.0 C88.0,135.0 236.4,135.0 236.4,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M214.0,114.0 C214.0,135.0 352.8,135.0 352.8,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M490.9,108.0 C490.9,132.0 236.4,132.0 236.4,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M490.9,108.0 C490.9,132.0 352.8,132.0 352.8,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M352.8,156.0 C352.8,135.0 362.5,135.0 362.5,114.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M362.5,114.0 C362.5,135.0 493.2,135.0 493.2,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M493.2,176.0 C493.2,197.0 473.3,197.0 473.3,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M272.8,174.0 C363.6,188.0 484.7,188.0 575.6,176.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M362.5,114.0 C362.5,135.0 619.2,135.0 619.2,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <g filter="url(#shadow)">
+    <rect x="30.0" y="32.0" width="96.8" height="14" rx="7" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <text x="78.4" y="40.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Creator / Funder</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="148.8" y="32.0" width="56.0" height="14" rx="7" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <text x="176.8" y="40.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Owner</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="46.8" y="94.0" width="82.4" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="49.8" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="88.0" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">EscrowFactory</text>
+    <text x="88.0" y="108.5" text-anchor="middle" font-size="3.5" fill="#64748B">Standard factory</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="151.2" y="94.0" width="125.6" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="154.2" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="214.0" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">AvalancheEscrowFactory</text>
+    <text x="214.0" y="108.5" text-anchor="middle" font-size="3.5" fill="#64748B">Hop factory</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="314.1" y="94.0" width="96.8" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="317.1" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="362.5" y="103.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">ICMBridgeFactory</text>
+    <text x="362.5" y="108.5" text-anchor="middle" font-size="3.5" fill="#64748B">Route registry</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="432.9" y="94.0" width="116.0" height="14" rx="7" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <text x="490.9" y="102.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Recipient / Redeemer</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="200.0" y="156.0" width="72.8" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="203.0" y="159.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="236.4" y="165.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">EscrowVault</text>
+    <text x="236.4" y="170.5" text-anchor="middle" font-size="3.5" fill="#64748B">HTLC clone</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="294.8" y="156.0" width="116.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="297.8" y="159.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="352.8" y="165.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">AvalancheEscrowVault</text>
+    <text x="352.8" y="170.5" text-anchor="middle" font-size="3.5" fill="#64748B">HTLC hop clone</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="575.6" y="156.0" width="87.2" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="578.6" y="159.0" width="1.4" height="14" rx="0.6" fill="#F59E0B"/>
+    <text x="619.2" y="165.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">ERC20 / Native</text>
+    <text x="619.2" y="170.5" text-anchor="middle" font-size="3.5" fill="#64748B">Assets</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="432.8" y="156.0" width="120.8" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="435.8" y="159.0" width="1.4" height="14" rx="0.6" fill="#F59E0B"/>
+    <text x="493.2" y="165.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">ICTT TokenTransferrer</text>
+    <text x="493.2" y="170.5" text-anchor="middle" font-size="3.5" fill="#64748B">Bridge endpoint</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="424.9" y="218.0" width="96.8" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="427.9" y="221.0" width="1.4" height="14" rx="0.6" fill="#F59E0B"/>
+    <text x="473.3" y="227.5" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Teleporter / ICM</text>
+    <text x="473.3" y="232.5" text-anchor="middle" font-size="3.5" fill="#64748B">Messaging</text>
+  </g>
+  <rect x="63.2" y="65.0" width="40.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="83.2" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">standard create</text>
+  <rect x="132.2" y="65.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="146.2" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">hop create</text>
+  <rect x="118.4" y="57.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="132.4" y="62.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">token list</text>
+  <rect x="183.8" y="65.0" width="23.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="195.4" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">hop list</text>
+  <rect x="254.5" y="65.0" width="30.4" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="269.7" y="70.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">route admin</text>
+  <rect x="145.8" y="130.0" width="32.8" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="162.2" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">vault deploy</text>
+  <rect x="269.4" y="130.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="283.4" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">hop deploy</text>
+  <rect x="347.2" y="127.0" width="32.8" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="363.6" y="132.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">secret claim</text>
+  <rect x="409.0" y="127.0" width="25.6" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="421.8" y="132.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">hop claim</text>
+  <rect x="342.4" y="134.0" width="30.4" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="357.6" y="139.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">bridge call</text>
+  <rect x="412.6" y="134.0" width="30.4" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="427.8" y="139.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">send tokens</text>
+  <rect x="465.7" y="192.0" width="35.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="483.3" y="197.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">message relay</text>
+  <rect x="407.8" y="187.0" width="32.8" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="424.2" y="192.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">asset payout</text>
+  <rect x="476.8" y="130.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="490.8" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">token pull</text>
+</svg>

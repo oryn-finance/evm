@@ -51,7 +51,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
     // 0xf3eac7ab
     error AvalancheEscrowFactory__InvalidAddressParameters();
     // 0x92be78de
-    error AvalancheEscrowFactory__ZeroExpiryBlocks();
+    error AvalancheEscrowFactory__ZeroEscrowDuration();
     // 0xa418527d
     error AvalancheEscrowFactory__ZeroAmount();
     // 0x28195c7e
@@ -90,7 +90,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
         address token;
         address creator;
         address recipient;
-        uint256 expiryBlocks;
+        uint256 escrowDuration;
         bytes32 commitmentHash;
         uint256 amount;
         bool l1Hop;
@@ -104,7 +104,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
 
     /// @notice EIP-712 typehash for CreateEscrowParams
     bytes32 public constant CREATE_ESCROW_TYPEHASH = keccak256(
-        "CreateEscrowParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount,bool l1Hop)"
+        "CreateEscrowParams(address token,address creator,address recipient,uint256 escrowDuration,bytes32 commitmentHash,uint256 amount,bool l1Hop)"
     );
 
     /// @notice Sentinel address representing native ETH/AVAX
@@ -138,7 +138,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
         address indexed token,
         address recipient,
         bytes32 commitmentHash,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         uint256 amount,
         bool l1Hop
     );
@@ -183,12 +183,12 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
     /// @notice Creates a new pre-funded escrow vault
     /// @param p.l1Hop When true the vault enforces claimHop() instead of claim()
     function createEscrow(EscrowParams calldata p) external whenNotPaused returns (address) {
-        _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+        _safeParams(p.creator, p.recipient, p.escrowDuration, p.amount);
         require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
         if (p.l1Hop) require(p.token != NATIVE_TOKEN, AvalancheEscrowFactory__NativeNotSupportedForHop());
 
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash, p.l1Hop);
+            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.escrowDuration, p.commitmentHash, p.l1Hop);
 
         address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
         require(!s_deployedEscrows[addr], AvalancheEscrowFactory__EscrowAlreadyDeployed());
@@ -215,12 +215,12 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
 
         for (uint256 i = 0; i < length; i++) {
             EscrowParams calldata p = params[i];
-            _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+            _safeParams(p.creator, p.recipient, p.escrowDuration, p.amount);
             require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
             if (p.l1Hop) require(p.token != NATIVE_TOKEN, AvalancheEscrowFactory__NativeNotSupportedForHop());
 
             (bytes memory encodedArgs, bytes32 salt) =
-                _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash, p.l1Hop);
+                _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.escrowDuration, p.commitmentHash, p.l1Hop);
 
             address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
             require(!s_deployedEscrows[addr], AvalancheEscrowFactory__EscrowAlreadyDeployed());
@@ -240,14 +240,14 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
 
     /// @notice Creates a native token escrow in one transaction (p.l1Hop must be false)
     function createEscrowNative(EscrowParams calldata p) external payable whenNotPaused returns (address) {
-        _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+        _safeParams(p.creator, p.recipient, p.escrowDuration, p.amount);
         require(p.token == NATIVE_TOKEN, AvalancheEscrowFactory__OnlyNativeTokenAllowed());
         require(!p.l1Hop, AvalancheEscrowFactory__NativeNotSupportedForHop());
         require(msg.value == p.amount, AvalancheEscrowFactory__MsgValueAmountMismatch());
         require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
 
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash, p.l1Hop);
+            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.escrowDuration, p.commitmentHash, p.l1Hop);
 
         address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
         require(!s_deployedEscrows[addr], AvalancheEscrowFactory__EscrowAlreadyDeployed());
@@ -265,7 +265,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
         whenNotPaused
         returns (address)
     {
-        _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+        _safeParams(p.creator, p.recipient, p.escrowDuration, p.amount);
         require(p.token != NATIVE_TOKEN, AvalancheEscrowFactory__OnlyERC20Allowed());
         require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
 
@@ -280,7 +280,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
         whenNotPaused
         returns (address)
     {
-        _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+        _safeParams(p.creator, p.recipient, p.escrowDuration, p.amount);
         require(p.token != NATIVE_TOKEN, AvalancheEscrowFactory__OnlyERC20Allowed());
         require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
 
@@ -291,11 +291,11 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
 
     /// @notice Predicts the deterministic vault address without deploying it
     function getEscrowAddress(EscrowParams calldata p) external view returns (address) {
-        _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+        _safeParams(p.creator, p.recipient, p.escrowDuration, p.amount);
         require(s_whitelistedTokens[p.token], AvalancheEscrowFactory__TokenNotAccepted());
 
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash, p.l1Hop);
+            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.escrowDuration, p.commitmentHash, p.l1Hop);
         address predictedAddr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedEscrows[predictedAddr], AvalancheEscrowFactory__EscrowAlreadyDeployed());
@@ -307,12 +307,12 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
     // Internal
     //////////////////////////////////////////////////////////////////////////
 
-    function _safeParams(address creator, address recipient, uint256 expiryBlocks, uint256 amount) internal pure {
+    function _safeParams(address creator, address recipient, uint256 escrowDuration, uint256 amount) internal pure {
         require(
             recipient != address(0) && creator != address(0) && creator != recipient,
             AvalancheEscrowFactory__InvalidAddressParameters()
         );
-        require(expiryBlocks > 0, AvalancheEscrowFactory__ZeroExpiryBlocks());
+        require(escrowDuration > 0, AvalancheEscrowFactory__ZeroEscrowDuration());
         require(amount > 0, AvalancheEscrowFactory__ZeroAmount());
     }
 
@@ -323,7 +323,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
                 p.token,
                 p.creator,
                 p.recipient,
-                p.expiryBlocks,
+                p.escrowDuration,
                 p.commitmentHash,
                 p.amount,
                 p.l1Hop
@@ -335,7 +335,7 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
 
     function _createErc20EscrowFromCreator(EscrowParams calldata p) internal returns (address) {
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash, p.l1Hop);
+            _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.escrowDuration, p.commitmentHash, p.l1Hop);
         address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedEscrows[addr], AvalancheEscrowFactory__EscrowAlreadyDeployed());
@@ -360,9 +360,15 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
     function _deployEscrow(bytes memory encodedArgs, bytes32 salt, uint256 amount) internal {
         address escrow = i_escrowImplementation.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
         escrow.functionCall(abi.encodeCall(AvalancheEscrowVault.initialize, ()));
-        (address token, address creator, address recipient, uint256 expiryBlocks, bytes32 commitmentHash, bool l1Hop) =
-            abi.decode(encodedArgs, (address, address, address, uint256, bytes32, bool));
-        emit EscrowCreated(escrow, creator, token, recipient, commitmentHash, expiryBlocks, amount, l1Hop);
+        (
+            address token,
+            address creator,
+            address recipient,
+            uint256 escrowDuration,
+            bytes32 commitmentHash,
+            bool l1Hop
+        ) = abi.decode(encodedArgs, (address, address, address, uint256, bytes32, bool));
+        emit EscrowCreated(escrow, creator, token, recipient, commitmentHash, escrowDuration, amount, l1Hop);
         s_deployedEscrows[escrow] = true;
     }
 
@@ -373,12 +379,12 @@ contract AvalancheEscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         bool l1Hop
     ) internal view returns (bytes memory encodedArgs, bytes32 salt) {
         require(commitmentHash != bytes32(0), AvalancheEscrowFactory__InvalidCommitmentHash());
-        encodedArgs = abi.encode(token, creator, recipient, expiryBlocks, commitmentHash, l1Hop);
-        salt = keccak256(abi.encode(block.chainid, token, creator, recipient, expiryBlocks, commitmentHash, l1Hop));
+        encodedArgs = abi.encode(token, creator, recipient, escrowDuration, commitmentHash, l1Hop);
+        salt = keccak256(abi.encode(block.chainid, token, creator, recipient, escrowDuration, commitmentHash, l1Hop));
     }
 }

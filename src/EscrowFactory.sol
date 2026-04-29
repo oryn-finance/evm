@@ -38,7 +38,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     // 0xd6e2de8f
     error EscrowFactory__InvalidAddressParameters();
     // 0x2515eed4
-    error EscrowFactory__ZeroExpiryBlocks();
+    error EscrowFactory__ZeroEscrowDuration();
     // 0x7510a9d5
     error EscrowFactory__ZeroAmount();
     // 0x65db15b5
@@ -75,7 +75,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token;
         address creator;
         address recipient;
-        uint256 expiryBlocks;
+        uint256 escrowDuration;
         bytes32 commitmentHash;
         uint256 amount;
     }
@@ -88,7 +88,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
 
     /// @notice EIP-712 typehash for CreateEscrowParams (used in createEscrowSigned)
     bytes32 public constant CREATE_ESCROW_TYPEHASH = keccak256(
-        "CreateEscrowParams(address token,address creator,address recipient,uint256 expiryBlocks,bytes32 commitmentHash,uint256 amount)"
+        "CreateEscrowParams(address token,address creator,address recipient,uint256 escrowDuration,bytes32 commitmentHash,uint256 amount)"
     );
 
     /// @notice Sentinel address representing native ETH in escrow operations
@@ -123,7 +123,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @param token Address of the ERC20 token for the escrow
     /// @param recipient Address that can claim by revealing commitment
     /// @param commitmentHash Hash that must be revealed to claim
-    /// @param expiryBlocks Number of blocks until the escrow expires
+    /// @param escrowDuration Number of seconds the escrow remains valid after deposit
     /// @param amount Token amount deposited into the escrow
     event EscrowCreated(
         address indexed escrowAddress,
@@ -131,7 +131,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address indexed token,
         address recipient,
         bytes32 commitmentHash,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         uint256 amount
     );
 
@@ -152,19 +152,19 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @notice Validates common parameters across escrow creation functions
     /// @param creator Address initiating the escrow
     /// @param recipient Address receiving the escrow assets
-    /// @param expiryBlocks Block count before the escrow expires
+    /// @param escrowDuration Duration in seconds before the escrow expires
     /// @param amount Token amount to be deposited
-    modifier safeParams(address creator, address recipient, uint256 expiryBlocks, uint256 amount) {
-        _safeParams(creator, recipient, expiryBlocks, amount);
+    modifier safeParams(address creator, address recipient, uint256 escrowDuration, uint256 amount) {
+        _safeParams(creator, recipient, escrowDuration, amount);
         _;
     }
 
-    function _safeParams(address creator, address recipient, uint256 expiryBlocks, uint256 amount) internal pure {
+    function _safeParams(address creator, address recipient, uint256 escrowDuration, uint256 amount) internal pure {
         require(
             recipient != address(0) && creator != address(0) && creator != recipient,
             EscrowFactory__InvalidAddressParameters()
         );
-        require(expiryBlocks > 0, EscrowFactory__ZeroExpiryBlocks());
+        require(escrowDuration > 0, EscrowFactory__ZeroEscrowDuration());
         require(amount > 0, EscrowFactory__ZeroAmount());
     }
 
@@ -216,7 +216,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @param token Address of the ERC20 token to deposit (must be whitelisted)
     /// @param creator Address of the escrow creator/initiator
     /// @param recipient Address that will receive the escrow assets
-    /// @param expiryBlocks Number of blocks until the escrow expires
+    /// @param escrowDuration Number of seconds the escrow remains valid after deposit
     /// @param commitmentHash Hash of the escrow commitment/terms
     /// @param amount Minimum token amount required in the escrow
     /// @return Address of the newly created escrow
@@ -226,14 +226,14 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         uint256 amount
-    ) external whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external whenNotPaused safeParams(creator, recipient, escrowDuration, amount) returns (address) {
         require(s_whitelistedTokens[token], EscrowFactory__TokenNotAccepted());
 
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
+            _getEscrowArgsAndSalt(token, creator, recipient, escrowDuration, commitmentHash);
 
         address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
@@ -267,11 +267,11 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         for (uint256 i = 0; i < length; i++) {
             EscrowParams calldata p = params[i];
 
-            _safeParams(p.creator, p.recipient, p.expiryBlocks, p.amount);
+            _safeParams(p.creator, p.recipient, p.escrowDuration, p.amount);
             require(s_whitelistedTokens[p.token], EscrowFactory__TokenNotAccepted());
 
             (bytes memory encodedArgs, bytes32 salt) =
-                _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.expiryBlocks, p.commitmentHash);
+                _getEscrowArgsAndSalt(p.token, p.creator, p.recipient, p.escrowDuration, p.commitmentHash);
 
             address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
@@ -292,7 +292,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @param token Address of the ERC20 token to deposit (must be whitelisted)
     /// @param creator Address of the escrow creator/initiator
     /// @param recipient Address that will receive the escrow assets
-    /// @param expiryBlocks Number of blocks until the escrow expires
+    /// @param escrowDuration Number of seconds the escrow remains valid after deposit
     /// @param commitmentHash Hash of the escrow commitment/terms
     /// @param amount Minimum token amount required in the escrow
     /// @return Address of the newly created escrow
@@ -302,16 +302,16 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         uint256 amount
-    ) external payable whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external payable whenNotPaused safeParams(creator, recipient, escrowDuration, amount) returns (address) {
         require(token == NATIVE_TOKEN, EscrowFactory__OnlyNativeTokenAllowed());
         require(msg.value == amount, EscrowFactory__MsgValueAmountMismatch());
         require(s_whitelistedTokens[token], EscrowFactory__TokenNotAccepted());
 
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
+            _getEscrowArgsAndSalt(token, creator, recipient, escrowDuration, commitmentHash);
 
         address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
@@ -329,7 +329,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @param token ERC20 token with permit support (must be whitelisted)
     /// @param creator Escrow creator who signs the permit
     /// @param recipient Address that will receive the escrow assets
-    /// @param expiryBlocks Number of blocks until the escrow expires
+    /// @param escrowDuration Number of seconds the escrow remains valid after deposit
     /// @param commitmentHash Hash of the escrow commitment/terms
     /// @param amount Token amount to deposit
     /// @param deadline Permit signature deadline (unix timestamp)
@@ -338,18 +338,18 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         uint256 amount,
         uint256 deadline,
         bytes calldata signature
-    ) external whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external whenNotPaused safeParams(creator, recipient, escrowDuration, amount) returns (address) {
         require(token != NATIVE_TOKEN, EscrowFactory__OnlyERC20Allowed());
         require(s_whitelistedTokens[token], EscrowFactory__TokenNotAccepted());
 
         _executePermit(token, creator, amount, deadline, signature);
 
-        return _createErc20EscrowFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
+        return _createErc20EscrowFromCreator(token, creator, recipient, escrowDuration, commitmentHash, amount);
     }
 
     /// @notice Creates a deterministic ERC20 escrow using EIP-712 signed authorization (relayer can submit)
@@ -357,7 +357,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @param token ERC20 token (must be whitelisted)
     /// @param creator Escrow creator who signed the params
     /// @param recipient Address that will receive the escrow assets
-    /// @param expiryBlocks Number of blocks until the escrow expires
+    /// @param escrowDuration Number of seconds the escrow remains valid after deposit
     /// @param commitmentHash Hash of the escrow commitment/terms
     /// @param amount Token amount to deposit
     /// @param signature EIP-712 signature over CreateEscrowParams
@@ -366,24 +366,24 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         uint256 amount,
         bytes calldata signature
-    ) external whenNotPaused safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external whenNotPaused safeParams(creator, recipient, escrowDuration, amount) returns (address) {
         require(token != NATIVE_TOKEN, EscrowFactory__OnlyERC20Allowed());
         require(s_whitelistedTokens[token], EscrowFactory__TokenNotAccepted());
 
-        _verifyCreateEscrowSignature(token, creator, recipient, expiryBlocks, commitmentHash, amount, signature);
+        _verifyCreateEscrowSignature(token, creator, recipient, escrowDuration, commitmentHash, amount, signature);
 
-        return _createErc20EscrowFromCreator(token, creator, recipient, expiryBlocks, commitmentHash, amount);
+        return _createErc20EscrowFromCreator(token, creator, recipient, escrowDuration, commitmentHash, amount);
     }
 
     /// @notice Predicts the deterministic escrow address without creating it
     /// @param token Address of the ERC20 token for the escrow
     /// @param creator Address of the escrow creator
     /// @param recipient Address receiving the escrow assets
-    /// @param expiryBlocks Number of blocks until expiry
+    /// @param escrowDuration Number of seconds the escrow remains valid after deposit
     /// @param commitmentHash Hash of the escrow commitment
     /// @param amount Minimum required token amount
     /// @return Address where the escrow would be deployed
@@ -393,14 +393,14 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         uint256 amount
-    ) external view safeParams(creator, recipient, expiryBlocks, amount) returns (address) {
+    ) external view safeParams(creator, recipient, escrowDuration, amount) returns (address) {
         require(s_whitelistedTokens[token], EscrowFactory__TokenNotAccepted());
 
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
+            _getEscrowArgsAndSalt(token, creator, recipient, escrowDuration, commitmentHash);
         address predictedAddr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedEscrows[predictedAddr], EscrowFactory__EscrowAlreadyDeployed());
@@ -419,13 +419,13 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         uint256 amount,
         bytes calldata signature
     ) internal view {
         bytes32 structHash = keccak256(
-            abi.encode(CREATE_ESCROW_TYPEHASH, token, creator, recipient, expiryBlocks, commitmentHash, amount)
+            abi.encode(CREATE_ESCROW_TYPEHASH, token, creator, recipient, escrowDuration, commitmentHash, amount)
         );
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
         require(signer == creator, EscrowFactory__InvalidSignature());
@@ -436,12 +436,12 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash,
         uint256 amount
     ) internal returns (address) {
         (bytes memory encodedArgs, bytes32 salt) =
-            _getEscrowArgsAndSalt(token, creator, recipient, expiryBlocks, commitmentHash);
+            _getEscrowArgsAndSalt(token, creator, recipient, escrowDuration, commitmentHash);
         address addr = i_escrowImplementation.predictDeterministicAddressWithImmutableArgs(encodedArgs, salt);
 
         require(!s_deployedEscrows[addr], EscrowFactory__EscrowAlreadyDeployed());
@@ -465,15 +465,15 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     }
 
     /// @notice Deploys escrow clone, initializes it, and marks as deployed
-    /// @param encodedArgs ABI-encoded escrow params (token, creator, recipient, expiryBlocks, commitmentHash)
+    /// @param encodedArgs ABI-encoded escrow params (token, creator, recipient, escrowDuration, commitmentHash)
     /// @param salt Deterministic deployment salt
     /// @param amount Token amount deposited into the escrow
     function _deployEscrow(bytes memory encodedArgs, bytes32 salt, uint256 amount) internal {
         address escrow = i_escrowImplementation.cloneDeterministicWithImmutableArgs(encodedArgs, salt);
         escrow.functionCall(abi.encodeCall(EscrowVault.initialize, ()));
-        (address token, address creator, address recipient, uint256 expiryBlocks, bytes32 commitmentHash) =
+        (address token, address creator, address recipient, uint256 escrowDuration, bytes32 commitmentHash) =
             abi.decode(encodedArgs, (address, address, address, uint256, bytes32));
-        emit EscrowCreated(escrow, creator, token, recipient, commitmentHash, expiryBlocks, amount);
+        emit EscrowCreated(escrow, creator, token, recipient, commitmentHash, escrowDuration, amount);
         s_deployedEscrows[escrow] = true;
     }
 
@@ -481,7 +481,7 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
     /// @param token Token address
     /// @param creator Creator address
     /// @param recipient Recipient address
-    /// @param expiryBlocks Block expiry count
+    /// @param escrowDuration Duration in seconds before the escrow expires
     /// @param commitmentHash Escrow commitment hash
     /// @return encodedArgs ABI-encoded immutable arguments for cloning
     /// @return salt Keccak256 hash of chain-scoped parameters for deterministic deployment
@@ -489,11 +489,11 @@ contract EscrowFactory is Ownable, Pausable, EIP712 {
         address token,
         address creator,
         address recipient,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         bytes32 commitmentHash
     ) internal view returns (bytes memory encodedArgs, bytes32 salt) {
         require(commitmentHash != bytes32(0), EscrowFactory__InvalidCommitmentHash());
-        encodedArgs = abi.encode(token, creator, recipient, expiryBlocks, commitmentHash);
-        salt = keccak256(abi.encode(block.chainid, token, creator, recipient, expiryBlocks, commitmentHash));
+        encodedArgs = abi.encode(token, creator, recipient, escrowDuration, commitmentHash);
+        salt = keccak256(abi.encode(block.chainid, token, creator, recipient, escrowDuration, commitmentHash));
     }
 }

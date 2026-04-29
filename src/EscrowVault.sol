@@ -50,8 +50,8 @@ contract EscrowVault is Initializable {
     //////////////////////////////////
     //////////////////////////////////
 
-    /// @notice Block number when the escrow was initialized and assets were deposited
-    /// @dev Used to enforce escrow expiry deadlines
+    /// @notice Timestamp when the escrow was initialized and assets were deposited
+    /// @dev Used with escrowDuration to enforce escrow expiry deadlines
     uint256 public s_depositedAt;
 
     /// @notice Whether the escrow has been settled (claimed or refunded)
@@ -84,12 +84,11 @@ contract EscrowVault is Initializable {
         _disableInitializers();
     }
 
-    /// @notice Initializes the escrow and records the deposit block number
+    /// @notice Initializes the escrow and records the deposit timestamp
     /// @dev Can only be called once per escrow due to Initializable guard
     /// @dev Called immediately after clone deployment by EscrowFactory
     function initialize() public initializer {
-        // Record the block number when assets were deposited for expiry calculations
-        s_depositedAt = block.number;
+        s_depositedAt = block.timestamp;
     }
 
     //////////////////////////////////
@@ -122,16 +121,14 @@ contract EscrowVault is Initializable {
     }
 
     /// @notice Returns escrow assets to the creator after the escrow has expired
-    /// @dev Only callable after expiryBlocks have passed since initialization
+    /// @dev Only callable after escrowDuration seconds have passed since initialization
     /// @dev Supports both ERC20 tokens and native ETH
     function refund() external {
         require(!s_settled, EscrowVault__EscrowAlreadySettled());
 
-        (address token, address creator,, uint256 expiryBlocks, bytes32 commitmentHash) = getEscrowParameters();
+        (address token, address creator,, uint256 escrowDuration, bytes32 commitmentHash) = getEscrowParameters();
 
-        // expiryBlocks is the number of blocks *after initialization* the escrow remains refundable.
-        // Using >= ensures `expiryBlocks=1` allows refund in the very next mined block.
-        require(block.number >= s_depositedAt + expiryBlocks, EscrowVault__EscrowNotExpired());
+        require(block.timestamp >= s_depositedAt + escrowDuration, EscrowVault__EscrowNotExpired());
 
         s_settled = true;
 
@@ -155,7 +152,7 @@ contract EscrowVault is Initializable {
     /// @return token Address of the ERC20 token or NATIVE_TOKEN sentinel for ETH
     /// @return creator Address of the escrow initiator who deposits the assets
     /// @return recipient Address that can claim by revealing commitment
-    /// @return expiryBlocks Number of blocks until the escrow expires
+    /// @return escrowDuration Number of seconds the escrow remains valid after deposit
     /// @return commitmentHash Hash (SHA256) that must be revealed to claim
     function getEscrowParameters() public view returns (address, address, address, uint256, bytes32) {
         bytes memory args = address(this).fetchCloneArgs();

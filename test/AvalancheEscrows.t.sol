@@ -32,6 +32,26 @@ contract ERC20PermitImpl is ERC20Permit {
     }
 }
 
+/// @notice Contract with no receive/fallback to force native deposit failures.
+contract AvalancheNoReceive {}
+
+/// @notice Fee-on-transfer token used to cover post-transfer balance checks.
+contract AvalancheFeeOnTransferToken is ERC20 {
+    constructor(address mintTo) ERC20("AvalancheFeeToken", "AFT") {
+        _mint(mintTo, 100_000_000 * 1e18);
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0)) {
+            uint256 fee = value / 10;
+            super._update(from, to, value - fee);
+            super._update(from, address(this), fee);
+        } else {
+            super._update(from, to, value);
+        }
+    }
+}
+
 /// @notice Records every bridge() call and actually pulls tokens to simulate real factory
 contract MockICMBridgeFactory is IICMBridgeFactory {
     address public lastToken;
@@ -84,7 +104,7 @@ contract AvalancheEscrowsTest is Test {
         address indexed token,
         address recipient,
         bytes32 commitmentHash,
-        uint256 expiryBlocks,
+        uint256 escrowDuration,
         uint256 amount,
         bool l1Hop
     );
@@ -148,7 +168,7 @@ contract AvalancheEscrowsTest is Test {
             token: address(token),
             creator: alice,
             recipient: bob,
-            expiryBlocks: EXPIRY,
+            escrowDuration: EXPIRY,
             commitmentHash: COMMITMENT_HASH,
             amount: AMOUNT,
             l1Hop: l1Hop
@@ -220,6 +240,28 @@ contract AvalancheEscrowsTest is Test {
         );
     }
 
+    function _signCreateParams(uint256 pk, AvalancheEscrowFactory.EscrowParams memory p)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                factory.CREATE_ESCROW_TYPEHASH(),
+                p.token,
+                p.creator,
+                p.recipient,
+                p.escrowDuration,
+                p.commitmentHash,
+                p.amount,
+                p.l1Hop
+            )
+        );
+        bytes32 digest = MessageHashUtils.toTypedDataHash(_factoryDomainSeparator(), structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
     //////////////////////////////////////////////////////////////////////////
     // AvalancheEscrowFactory — l1Hop = false (standard path)
     //////////////////////////////////////////////////////////////////////////
@@ -245,7 +287,7 @@ contract AvalancheEscrowsTest is Test {
             token: address(permitToken),
             creator: alice,
             recipient: bob,
-            expiryBlocks: EXPIRY,
+            escrowDuration: EXPIRY,
             commitmentHash: COMMITMENT_HASH,
             amount: AMOUNT,
             l1Hop: false
@@ -284,21 +326,7 @@ contract AvalancheEscrowsTest is Test {
         vm.prank(alice);
         token.approve(address(factory), AMOUNT);
 
-        bytes32 structHash = keccak256(
-            abi.encode(
-                factory.CREATE_ESCROW_TYPEHASH(),
-                p.token,
-                p.creator,
-                p.recipient,
-                p.expiryBlocks,
-                p.commitmentHash,
-                p.amount,
-                p.l1Hop
-            )
-        );
-        bytes32 digest = MessageHashUtils.toTypedDataHash(_factoryDomainSeparator(), structHash);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, digest);
-        bytes memory sig = abi.encodePacked(r, s, v);
+        bytes memory sig = _signCreateParams(ALICE_PK, p);
 
         vm.prank(alice);
         address vault = factory.createEscrowSigned(p, sig);
@@ -323,7 +351,7 @@ contract AvalancheEscrowsTest is Test {
         assertTrue(l1Hop);
     }
 
-    function test_createEscrow_withHop_differentAddressThanNoHop() public {
+    function test_createEscrow_withHop_differentAddressThanNoHop() public view {
         address hopAddr = factory.getEscrowAddress(_p(true));
         address noHopAddr = factory.getEscrowAddress(_p(false));
         assertTrue(hopAddr != noHopAddr, "l1Hop=true and l1Hop=false must produce different addresses");
@@ -335,7 +363,7 @@ contract AvalancheEscrowsTest is Test {
             token: nativeToken,
             creator: alice,
             recipient: bob,
-            expiryBlocks: EXPIRY,
+            escrowDuration: EXPIRY,
             commitmentHash: COMMITMENT_HASH,
             amount: AMOUNT,
             l1Hop: true
@@ -350,7 +378,7 @@ contract AvalancheEscrowsTest is Test {
             token: nativeToken,
             creator: alice,
             recipient: bob,
-            expiryBlocks: EXPIRY,
+            escrowDuration: EXPIRY,
             commitmentHash: COMMITMENT_HASH,
             amount: AMOUNT,
             l1Hop: true
@@ -367,7 +395,7 @@ contract AvalancheEscrowsTest is Test {
             token: nativeToken,
             creator: alice,
             recipient: bob,
-            expiryBlocks: EXPIRY,
+            escrowDuration: EXPIRY,
             commitmentHash: COMMITMENT_HASH,
             amount: AMOUNT,
             l1Hop: false
@@ -380,6 +408,98 @@ contract AvalancheEscrowsTest is Test {
         assertEq(vault.balance, AMOUNT);
     }
 
+    function test_nativeVault_claim_success() public {
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: COMMITMENT_HASH,
+            amount: AMOUNT,
+            l1Hop: false
+        });
+
+        vm.deal(alice, AMOUNT);
+        vm.prank(alice);
+        address vault = factory.createEscrowNative{value: AMOUNT}(p);
+
+        uint256 bobBefore = bob.balance;
+        AvalancheEscrowVault(vault).claim(PREIMAGE);
+
+        assertEq(bob.balance, bobBefore + AMOUNT);
+        assertEq(vault.balance, 0);
+        assertTrue(AvalancheEscrowVault(vault).s_settled());
+    }
+
+    function test_nativeVault_refund_success() public {
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: COMMITMENT_HASH,
+            amount: AMOUNT,
+            l1Hop: false
+        });
+
+        vm.deal(alice, AMOUNT);
+        vm.prank(alice);
+        address vault = factory.createEscrowNative{value: AMOUNT}(p);
+
+        vm.warp(block.timestamp + EXPIRY);
+        uint256 aliceBefore = alice.balance;
+        AvalancheEscrowVault(vault).refund();
+
+        assertEq(alice.balance, aliceBefore + AMOUNT);
+        assertEq(vault.balance, 0);
+        assertTrue(AvalancheEscrowVault(vault).s_settled());
+    }
+
+    function test_nativeVault_claim_revert_whenRecipientRejectsNative() public {
+        AvalancheNoReceive noReceive = new AvalancheNoReceive();
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: address(noReceive),
+            escrowDuration: EXPIRY,
+            commitmentHash: COMMITMENT_HASH,
+            amount: AMOUNT,
+            l1Hop: false
+        });
+
+        vm.deal(alice, AMOUNT);
+        vm.prank(alice);
+        address vault = factory.createEscrowNative{value: AMOUNT}(p);
+
+        vm.expectRevert(AvalancheEscrowVault.AvalancheEscrowVault__NativeTransferFailed.selector);
+        AvalancheEscrowVault(vault).claim(PREIMAGE);
+
+        assertEq(vault.balance, AMOUNT);
+    }
+
+    function test_nativeVault_refund_revert_whenCreatorRejectsNative() public {
+        AvalancheNoReceive noReceive = new AvalancheNoReceive();
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: address(noReceive),
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: COMMITMENT_HASH,
+            amount: AMOUNT,
+            l1Hop: false
+        });
+
+        vm.deal(alice, AMOUNT);
+        vm.prank(alice);
+        address vault = factory.createEscrowNative{value: AMOUNT}(p);
+
+        vm.warp(block.timestamp + EXPIRY);
+        vm.expectRevert(AvalancheEscrowVault.AvalancheEscrowVault__NativeTransferFailed.selector);
+        AvalancheEscrowVault(vault).refund();
+
+        assertEq(vault.balance, AMOUNT);
+    }
+
     function test_createEscrowBatch_mixedHop() public {
         address vault1Addr = factory.getEscrowAddress(_p(false));
 
@@ -387,7 +507,7 @@ contract AvalancheEscrowsTest is Test {
             token: address(token),
             creator: alice,
             recipient: bob,
-            expiryBlocks: EXPIRY + 1,
+            escrowDuration: EXPIRY + 1,
             commitmentHash: COMMITMENT_HASH,
             amount: AMOUNT,
             l1Hop: true
@@ -418,6 +538,317 @@ contract AvalancheEscrowsTest is Test {
         // Factory checks s_deployedEscrows before the balance check, so no re-funding needed
         vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__EscrowAlreadyDeployed.selector);
         factory.createEscrow(_p(false));
+    }
+
+    function test_factory_ownerPauseWhitelistAndDelistBranches() public {
+        address newToken = makeAddr("newToken");
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        factory.pause();
+
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit AvalancheEscrowFactory.TokenWhitelisted(newToken);
+        factory.whitelistToken(newToken);
+        assertTrue(factory.s_whitelistedTokens(newToken));
+
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit AvalancheEscrowFactory.TokenDelisted(newToken);
+        factory.delistToken(newToken);
+        assertFalse(factory.s_whitelistedTokens(newToken));
+
+        vm.prank(owner);
+        factory.pause();
+
+        address vaultAddr = _predictAndFund(false);
+        vm.expectRevert(abi.encodeWithSelector(Pausable.EnforcedPause.selector));
+        factory.createEscrow(_p(false));
+
+        vm.prank(owner);
+        factory.unpause();
+
+        vm.prank(alice);
+        address vault = factory.createEscrow(_p(false));
+        assertEq(vault, vaultAddr);
+    }
+
+    function test_getEscrowAddress_revert_invalidParams() public {
+        AvalancheEscrowFactory.EscrowParams memory p = _p(false);
+
+        p.creator = address(0);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InvalidAddressParameters.selector);
+        factory.getEscrowAddress(p);
+
+        p = _p(false);
+        p.recipient = address(0);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InvalidAddressParameters.selector);
+        factory.getEscrowAddress(p);
+
+        p = _p(false);
+        p.recipient = alice;
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InvalidAddressParameters.selector);
+        factory.getEscrowAddress(p);
+
+        p = _p(false);
+        p.escrowDuration = 0;
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__ZeroEscrowDuration.selector);
+        factory.getEscrowAddress(p);
+
+        p = _p(false);
+        p.amount = 0;
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__ZeroAmount.selector);
+        factory.getEscrowAddress(p);
+
+        p = _p(false);
+        p.commitmentHash = bytes32(0);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InvalidCommitmentHash.selector);
+        factory.getEscrowAddress(p);
+
+        p = _p(false);
+        p.token = makeAddr("unlisted");
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__TokenNotAccepted.selector);
+        factory.getEscrowAddress(p);
+    }
+
+    function test_createEscrow_prefundedNative_success() public {
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: COMMITMENT_HASH,
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        address vaultAddr = factory.getEscrowAddress(p);
+
+        vm.deal(alice, AMOUNT);
+        vm.prank(alice);
+        (bool sent,) = payable(vaultAddr).call{value: AMOUNT}("");
+        assertTrue(sent);
+
+        address vault = factory.createEscrow(p);
+        assertEq(vault, vaultAddr);
+        assertEq(vault.balance, AMOUNT);
+    }
+
+    function test_createEscrow_revert_tokenNotAcceptedAndInsufficientFunds() public {
+        AvalancheEscrowFactory.EscrowParams memory p = _p(false);
+        p.token = makeAddr("unlisted");
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__TokenNotAccepted.selector);
+        factory.createEscrow(p);
+
+        p = _p(false);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InsufficientFundsDeposited.selector);
+        factory.createEscrow(p);
+
+        p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: sha256("native-insufficient"),
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InsufficientFundsDeposited.selector);
+        factory.createEscrow(p);
+    }
+
+    function test_createEscrowBatch_revert_emptyInvalidAndAlreadyDeployed() public {
+        AvalancheEscrowFactory.EscrowParams[] memory empty = new AvalancheEscrowFactory.EscrowParams[](0);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__EmptyBatch.selector);
+        factory.createEscrowBatch(empty);
+
+        AvalancheEscrowFactory.EscrowParams memory valid = _p(false);
+        address validAddr = factory.getEscrowAddress(valid);
+        vm.prank(alice);
+        token.transfer(validAddr, AMOUNT);
+
+        AvalancheEscrowFactory.EscrowParams[] memory params = new AvalancheEscrowFactory.EscrowParams[](2);
+        params[0] = valid;
+        params[1] = _p(false);
+        params[1].token = makeAddr("unlisted");
+
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__TokenNotAccepted.selector);
+        factory.createEscrowBatch(params);
+
+        _deployVault(false);
+        params = new AvalancheEscrowFactory.EscrowParams[](1);
+        params[0] = _p(false);
+
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__EscrowAlreadyDeployed.selector);
+        factory.createEscrowBatch(params);
+    }
+
+    function test_createEscrowBatch_nativeSuccessAndReverts() public {
+        AvalancheEscrowFactory.EscrowParams memory nativeP = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: sha256("batch-native"),
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        address nativeAddr = factory.getEscrowAddress(nativeP);
+
+        vm.deal(alice, AMOUNT);
+        vm.prank(alice);
+        (bool sent,) = payable(nativeAddr).call{value: AMOUNT}("");
+        assertTrue(sent);
+
+        AvalancheEscrowFactory.EscrowParams[] memory params = new AvalancheEscrowFactory.EscrowParams[](1);
+        params[0] = nativeP;
+        address[] memory vaults = factory.createEscrowBatch(params);
+        assertEq(vaults[0], nativeAddr);
+
+        nativeP.commitmentHash = sha256("batch-native-hop");
+        nativeP.l1Hop = true;
+        params[0] = nativeP;
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__NativeNotSupportedForHop.selector);
+        factory.createEscrowBatch(params);
+
+        nativeP.commitmentHash = sha256("batch-native-insufficient");
+        nativeP.l1Hop = false;
+        params[0] = nativeP;
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InsufficientFundsDeposited.selector);
+        factory.createEscrowBatch(params);
+    }
+
+    function test_createEscrowNative_revert_validationBranches() public {
+        AvalancheEscrowFactory.EscrowParams memory p = _p(false);
+        vm.deal(alice, AMOUNT);
+        vm.prank(alice);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__OnlyNativeTokenAllowed.selector);
+        factory.createEscrowNative{value: AMOUNT}(p);
+
+        p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: sha256("native-msg-value"),
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        vm.prank(alice);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__MsgValueAmountMismatch.selector);
+        factory.createEscrowNative{value: AMOUNT - 1}(p);
+
+        address nativeToken = factory.NATIVE_TOKEN();
+        vm.prank(owner);
+        factory.delistToken(nativeToken);
+
+        vm.prank(alice);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__TokenNotAccepted.selector);
+        factory.createEscrowNative{value: AMOUNT}(p);
+    }
+
+    function test_createEscrowNative_revert_duplicateAndDepositFailed() public {
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: sha256("native-duplicate"),
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        vm.deal(alice, AMOUNT * 2);
+
+        vm.prank(alice);
+        factory.createEscrowNative{value: AMOUNT}(p);
+
+        vm.prank(alice);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__EscrowAlreadyDeployed.selector);
+        factory.createEscrowNative{value: AMOUNT}(p);
+
+        p.commitmentHash = sha256("native-deposit-failed");
+        address predicted = factory.getEscrowAddress(p);
+        AvalancheNoReceive noReceive = new AvalancheNoReceive();
+        vm.etch(predicted, address(noReceive).code);
+
+        vm.prank(alice);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__NativeDepositFailed.selector);
+        factory.createEscrowNative{value: AMOUNT}(p);
+    }
+
+    function test_createEscrowPermit_revert_branches() public {
+        bytes memory sig = abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+        uint256 deadline = block.timestamp + 1 hours;
+
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: sha256("permit-native"),
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__OnlyERC20Allowed.selector);
+        factory.createEscrowPermit(p, deadline, sig);
+
+        p = _p(false);
+        p.token = makeAddr("unlisted-permit");
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__TokenNotAccepted.selector);
+        factory.createEscrowPermit(p, deadline, sig);
+
+        p = _p(false);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__PermitFailed.selector);
+        factory.createEscrowPermit(p, deadline, sig);
+    }
+
+    function test_createEscrowSigned_revert_branches() public {
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: factory.NATIVE_TOKEN(),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: sha256("signed-native"),
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        bytes memory sig = _signCreateParams(ALICE_PK, p);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__OnlyERC20Allowed.selector);
+        factory.createEscrowSigned(p, sig);
+
+        p = _p(false);
+        p.token = makeAddr("unlisted-signed");
+        sig = _signCreateParams(ALICE_PK, p);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__TokenNotAccepted.selector);
+        factory.createEscrowSigned(p, sig);
+
+        p = _p(false);
+        sig = _signCreateParams(BOB_PK, p);
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InvalidSignature.selector);
+        factory.createEscrowSigned(p, sig);
+    }
+
+    function test_createEscrowSigned_revert_feeOnTransferInsufficientAfterTransfer() public {
+        AvalancheFeeOnTransferToken feeToken = new AvalancheFeeOnTransferToken(alice);
+        vm.prank(owner);
+        factory.whitelistToken(address(feeToken));
+
+        AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
+            token: address(feeToken),
+            creator: alice,
+            recipient: bob,
+            escrowDuration: EXPIRY,
+            commitmentHash: sha256("signed-fee-token"),
+            amount: AMOUNT,
+            l1Hop: false
+        });
+        bytes memory sig = _signCreateParams(ALICE_PK, p);
+
+        vm.prank(alice);
+        feeToken.approve(address(factory), AMOUNT);
+
+        vm.expectRevert(AvalancheEscrowFactory.AvalancheEscrowFactory__InsufficientFundsDeposited.selector);
+        factory.createEscrowSigned(p, sig);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -506,6 +937,26 @@ contract AvalancheEscrowsTest is Test {
         // Bridge factory pulls AMOUNT - fee + fee = AMOUNT total
         assertEq(token.balanceOf(address(mockBridge)), AMOUNT);
         assertEq(token.balanceOf(address(vault)), 0);
+    }
+
+    function test_claimHop_success_bridgeTokenWithZeroFee() public {
+        AvalancheEscrowVault vault = _deployVault(true);
+
+        AvalancheEscrowVault.HopData memory hd = AvalancheEscrowVault.HopData({
+            bridgeFactory: address(mockBridge),
+            destBlockchainId: L1_CHAIN_ID,
+            recipient: L1_RECIPIENT,
+            primaryFeeToken: address(token),
+            primaryRelayerFee: 0
+        });
+        bytes memory sig = _signHopData(address(vault), hd);
+
+        vault.claimHop(PREIMAGE, sig, hd);
+
+        assertEq(mockBridge.lastAmount(), AMOUNT);
+        assertEq(mockBridge.lastFeeToken(), address(token));
+        assertEq(mockBridge.lastRelayerFee(), 0);
+        assertEq(token.balanceOf(address(mockBridge)), AMOUNT);
     }
 
     function test_claimHop_revert_notHopEscrow() public {
@@ -630,7 +1081,7 @@ contract AvalancheEscrowsTest is Test {
         AvalancheEscrowVault vault = _deployVault(false);
         uint256 aliceBefore = token.balanceOf(alice);
 
-        vm.roll(block.number + EXPIRY);
+        vm.warp(block.timestamp + EXPIRY);
 
         vm.expectEmit(true, false, false, true);
         emit Refunded(alice, COMMITMENT_HASH);
@@ -645,7 +1096,7 @@ contract AvalancheEscrowsTest is Test {
         AvalancheEscrowVault vault = _deployVault(true);
         uint256 aliceBefore = token.balanceOf(alice);
 
-        vm.roll(block.number + EXPIRY);
+        vm.warp(block.timestamp + EXPIRY);
         vault.refund();
 
         assertEq(token.balanceOf(alice), aliceBefore + AMOUNT);
@@ -661,7 +1112,7 @@ contract AvalancheEscrowsTest is Test {
     function test_refund_revert_alreadySettled_afterClaim() public {
         AvalancheEscrowVault vault = _deployVault(false);
         vault.claim(PREIMAGE);
-        vm.roll(block.number + EXPIRY);
+        vm.warp(block.timestamp + EXPIRY);
         vm.expectRevert(AvalancheEscrowVault.AvalancheEscrowVault__EscrowAlreadySettled.selector);
         vault.refund();
     }
@@ -672,7 +1123,7 @@ contract AvalancheEscrowsTest is Test {
         bytes memory sig = _signHopData(address(vault), hd);
         vault.claimHop(PREIMAGE, sig, hd);
 
-        vm.roll(block.number + EXPIRY);
+        vm.warp(block.timestamp + EXPIRY);
         vm.expectRevert(AvalancheEscrowVault.AvalancheEscrowVault__EscrowAlreadySettled.selector);
         vault.refund();
     }
@@ -706,7 +1157,7 @@ contract AvalancheEscrowsTest is Test {
             token: address(token),
             creator: alice,
             recipient: bob,
-            expiryBlocks: EXPIRY,
+            escrowDuration: EXPIRY,
             commitmentHash: COMMITMENT_HASH,
             amount: amount,
             l1Hop: true
@@ -727,14 +1178,14 @@ contract AvalancheEscrowsTest is Test {
         assertTrue(vault.s_settled());
     }
 
-    function testFuzz_refund_atExactExpiry(uint64 expiry) public {
-        vm.assume(expiry > 0 && expiry <= 50_000);
+    function testFuzz_refund_atExactExpiry(uint64 escrowDuration) public {
+        vm.assume(escrowDuration > 0 && escrowDuration <= 50_000);
 
         AvalancheEscrowFactory.EscrowParams memory p = AvalancheEscrowFactory.EscrowParams({
             token: address(token),
             creator: alice,
             recipient: bob,
-            expiryBlocks: expiry,
+            escrowDuration: escrowDuration,
             commitmentHash: COMMITMENT_HASH,
             amount: AMOUNT,
             l1Hop: false
@@ -748,7 +1199,7 @@ contract AvalancheEscrowsTest is Test {
         AvalancheEscrowVault vault = AvalancheEscrowVault(vaultAddr);
         uint256 deposited = vault.s_depositedAt();
 
-        vm.roll(deposited + expiry);
+        vm.warp(deposited + escrowDuration);
         vault.refund(); // should not revert
         assertTrue(vault.s_settled());
     }
@@ -760,7 +1211,7 @@ contract AvalancheEscrowsTest is Test {
                 token: address(token),
                 creator: alice,
                 recipient: bob,
-                expiryBlocks: EXPIRY,
+                escrowDuration: EXPIRY,
                 commitmentHash: commitmentHash,
                 amount: AMOUNT,
                 l1Hop: true
@@ -771,7 +1222,7 @@ contract AvalancheEscrowsTest is Test {
                 token: address(token),
                 creator: alice,
                 recipient: bob,
-                expiryBlocks: EXPIRY,
+                escrowDuration: EXPIRY,
                 commitmentHash: commitmentHash,
                 amount: AMOUNT,
                 l1Hop: false

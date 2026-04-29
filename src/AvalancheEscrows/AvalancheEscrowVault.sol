@@ -40,7 +40,7 @@ import {IICMBridgeFactory} from "../interfaces/IICMBridgeFactory.sol";
 /// @dev Clone-with-immutable-args pattern: args are ABI-encoded by AvalancheEscrowFactory
 ///      and stored in the clone's bytecode. Read back via fetchCloneArgs().
 ///      Arg layout: (address token, address creator, address recipient,
-///                   uint256 expiryBlocks, bytes32 commitmentHash, bool l1Hop)
+///                   uint256 escrowDuration, bytes32 commitmentHash, bool l1Hop)
 contract AvalancheEscrowVault is Initializable {
     using Clones for address;
     using SafeERC20 for IERC20;
@@ -115,7 +115,7 @@ contract AvalancheEscrowVault is Initializable {
     //////////////////////////////////
     //////////////////////////////////
 
-    /// @notice Block number when the escrow was initialized
+    /// @notice Timestamp when the escrow was initialized
     uint256 public s_depositedAt;
 
     /// @notice Whether this escrow has been settled (claimed, claimHop-ed, or refunded)
@@ -150,9 +150,9 @@ contract AvalancheEscrowVault is Initializable {
         _disableInitializers();
     }
 
-    /// @notice Records the deposit block. Called once by AvalancheEscrowFactory after clone deploy.
+    /// @notice Records the deposit timestamp. Called once by AvalancheEscrowFactory after clone deploy.
     function initialize() public initializer {
-        s_depositedAt = block.number;
+        s_depositedAt = block.timestamp;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -242,9 +242,9 @@ contract AvalancheEscrowVault is Initializable {
     function refund() external {
         require(!s_settled, AvalancheEscrowVault__EscrowAlreadySettled());
 
-        (address token, address creator,, uint256 expiryBlocks, bytes32 commitmentHash,) = getEscrowParameters();
+        (address token, address creator,, uint256 escrowDuration, bytes32 commitmentHash,) = getEscrowParameters();
 
-        require(block.number >= s_depositedAt + expiryBlocks, AvalancheEscrowVault__EscrowNotExpired());
+        require(block.timestamp >= s_depositedAt + escrowDuration, AvalancheEscrowVault__EscrowNotExpired());
 
         s_settled = true;
 
@@ -270,7 +270,7 @@ contract AvalancheEscrowVault is Initializable {
             address token,
             address creator,
             address recipient,
-            uint256 expiryBlocks,
+            uint256 escrowDuration,
             bytes32 commitmentHash,
             bool l1Hop
         )

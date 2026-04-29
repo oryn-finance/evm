@@ -13,7 +13,7 @@
 
 ## Overview
 
-HTLC-based escrow system for trustless cross-chain settlement on any EVM chain. Supports ERC20 tokens and native ETH. Funds are locked in deterministic minimal-proxy escrows — the recipient **claims** by revealing a SHA-256 preimage, or the creator **refunds** after a block-based expiry.
+HTLC-based escrow system for trustless cross-chain settlement on any EVM chain. Supports ERC20 tokens and native ETH. Funds are locked in deterministic minimal-proxy escrows — the recipient **claims** by revealing a SHA-256 preimage, or the creator **refunds** after an on-chain time window (`escrowDuration` seconds from deposit).
 
 ## Key Features
 
@@ -54,14 +54,14 @@ HTLC-based escrow system for trustless cross-chain settlement on any EVM chain. 
 |---|---|
 | `claim(bytes preimage)` | Recipient claims funds by revealing the SHA-256 preimage |
 | `refund()` | Creator reclaims funds after the expiry window has passed |
-| `getEscrowParameters()` | Returns immutable escrow params: `token`, `creator`, `recipient`, `expiryBlocks`, `commitmentHash` |
+| `getEscrowParameters()` | Returns immutable escrow params: `token`, `creator`, `recipient`, `escrowDuration` (seconds), `commitmentHash` |
 
 ## Security
 
 | Mechanism | Detail |
 |---|---|
 | **Hash-lock** | SHA-256 commitment — only the preimage holder can claim |
-| **Time-lock** | Block-based expiry window for creator refunds |
+| **Time-lock** | `refund()` only after `block.timestamp >= s_depositedAt + escrowDuration` (`escrowDuration` in seconds) |
 | **Settlement guard** | `s_settled` flag enforces single-use (no double-spend or re-entrancy) |
 | **Replay protection** | Per-creator nonces for EIP-712 signed creation |
 | **Commitment validation** | Zero-hash commitments rejected at creation |
